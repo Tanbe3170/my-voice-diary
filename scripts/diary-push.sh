@@ -55,7 +55,7 @@ fi
 TITLE=$(echo "$DIARY_JSON" | jq -r '.title')
 SUMMARY=$(echo "$DIARY_JSON" | jq -r '.summary')
 BODY=$(echo "$DIARY_JSON" | jq -r '.body')
-TAGS=$(echo "$DIARY_JSON" | jq -r '.tags | join(" ")')
+TAGS=$(echo "$DIARY_JSON" | jq -r '.tags | map("\"" + . + "\"") | join(", ")')
 IMAGE_PROMPT=$(echo "$DIARY_JSON" | jq -r '.image_prompt')
 
 echo -e "${GREEN}✅ 整形完了！${NC}"
