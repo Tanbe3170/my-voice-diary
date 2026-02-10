@@ -50,6 +50,41 @@ nerd-dictation begin --vosk-model-dir=~/vosk-model-ja-0.22 &
 # 音声認識終了
 nerd-dictation end
 ```
+### Phase 1完成後の使い方
+
+#### 方法1: 手動テキスト入力（現在利用可能）
+```bash
+cd ~/diary
+bash scripts/diary-push.sh "今日の出来事をここに入力..."
+```
+
+#### 方法2: スマホから音声入力（Phase 2完成後）
+
+1. https://tanbe3170.github.io/my-voice-diary/diary-input.html にアクセス
+2. 🎤 ボタンをタップして音声入力
+3. 「保存」ボタンをタップ
+
+#### 方法3: Ubuntu PC音声入力（Phase 3完成後）
+```bash
+# 音声入力モード起動
+diary-voice
+
+# 話す → Enter → 日記が自動保存される
+```
+
+#### オプション: AI画像生成（Phase 4完成後）
+```bash
+# 日記作成時に画像生成を選択
+bash scripts/diary-push.sh "今日の出来事..."
+# → "画像を生成しますか？ (y/n):" で y を入力
+```
+
+#### オプション: Instagram自動投稿（Phase 5完成後）
+```bash
+# 日記作成時にInstagram投稿を選択
+bash scripts/diary-push.sh "今日の出来事..."
+# → "Instagramに投稿しますか？ (y/n):" で y を入力
+```
 
 ## 📝 開発フェーズ
 
@@ -57,6 +92,54 @@ nerd-dictation end
 - [ ] **Phase 2**: GitHub Pages閲覧機能
 - [ ] **Phase 3**: AI画像生成
 - [ ] **Phase 4**: Instagram自動投稿
+
+---
+
+## 🎤 音声入力機能
+
+### Phase 2: スマホから音声入力
+- **SuperWhisper**: 高精度音声認識アプリ（iOS/Android）
+- **Web Speech API**: ブラウザ標準機能（無料、Chrome/Safari対応）
+- **Webフォーム**: PWA対応、オフライン動作可能
+- **アクセス**: https://tanbe3170.github.io/my-voice-diary/diary-input.html
+
+### Phase 3: Ubuntu PC音声入力
+- **Nerd Dictation + Vosk**: オフライン動作
+- **日本語モデル**: vosk-model-small-ja-0.22（約50MB）
+- **コマンド**: `diary-voice`（音声入力モード起動）
+- **コスト**: $0
+
+---
+
+## 🖼️ AI画像生成（Phase 4）
+
+### 機能
+- **DALL-E 3 API**: 日記の内容から自動で画像生成
+- **画像プロンプト自動作成**: Claude APIが日記から最適なプロンプトを生成
+- **保存先**: `images/YYYY-MM-DD.png`
+- **Markdown自動更新**: 生成した画像を日記に自動埋め込み
+
+### コスト
+- **Standard品質**: $0.04/枚
+- **HD品質**: $0.08/枚
+- **月30枚**: 約$1.2/月
+
+---
+
+## 📱 Instagram自動投稿（Phase 5）
+
+### 機能
+- **Instagram Graph API**: 画像＋キャプション自動投稿
+- **ハッシュタグ自動付与**: 日記のタグから自動生成
+- **完全自動化**: `diary-push.sh` から直接投稿可能
+
+### 前提条件
+- Meta開発者アカウント（無料）
+- Instagramビジネスアカウント（無料）
+- Facebookページ（無料）
+
+### コスト
+- **API使用料**: $0
 
 ## 🔧 環境構築
 

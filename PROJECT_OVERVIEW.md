@@ -115,43 +115,91 @@ voice-diary/
 - [x] GitHub Token 設定 (`~/.bashrc`)
 - [x] Git SSH設定（3台のマシンで同期可能）
 
-### 🔄 Phase 1: 基本機能（実装中）
+### 🔄 Phase 1: 基本機能（85%完了）
 **目標**: 音声入力 → Claude API整形 → GitHub保存
 
 **成果物**:
 - [x] `diary-summarize.py` - Claude APIで日記整形
 - [x] `diary-push.sh` - GitHubに自動push
-- [ ] GitHubリポジトリ作成 (`my-voice-diary`)
-- [ ] 初回コミット・テスト実行
-- [ ] 実環境での動作確認
+- [x] GitHubリポジトリ作成 (`my-voice-diary`)
+- [x] 初回コミット・動作確認
+- [ ] 実環境での動作確認（残り2日分の日記）
 
-**現在の状態**: スクリプトファイルは作成済み、実環境での実行待ち
+**現在の状態**: スクリプトファイルは作成済み、残り2日分の日記作成待ち
 
-### 📅 Phase 2: GitHub Pages閲覧（未着手）
-**目標**: GitHub Pagesで日記を美しく閲覧
+### 📅 Phase 2: Webフォーム＋スマホ音声入力（未着手）
+**目標**: スマホから音声入力で日記を作成
 
 **成果物**:
 - [ ] 静的サイトのHTML/CSS/JS
+- [ ] 音声入力対応Webフォーム（SuperWhisper + Web Speech API）
 - [ ] カレンダービュー
 - [ ] タグ検索機能
-- [ ] レスポンシブデザイン
+- [ ] PWA対応（オフライン動作）
 
-### 🎨 Phase 3: AI画像生成（未着手）
+**工数**: 12時間  
+**コスト**: $0（SuperWhisper除く）
+
+### 📅 Phase 3: Ubuntu音声認識（未着手）
+**目標**: Ubuntu環境でオフライン音声認識
+
+**成果物**:
+- [ ] Nerd Dictation + Vosk セットアップ
+- [ ] `diary-voice.sh` - 音声入力モード
+- [ ] エイリアス設定（`diary-voice` コマンド）
+
+**工数**: 4時間  
+**コスト**: $0
+
+### 🎨 Phase 4: AI画像生成（未着手）
 **目標**: 日記の内容から自動で画像生成
 
 **成果物**:
-- [ ] `image-prompt-gen.py` - 画像生成プロンプト作成
-- [ ] DALL-E API連携
-- [ ] Midjourney Discord Bot連携
+- [ ] `image-gen.py` - DALL-E 3 API連携
 - [ ] 生成画像の自動保存
+- [ ] Markdown自動更新
 
-### 📱 Phase 4: Instagram連携（未着手）
-**目標**: Instagram自動投稿
+**工数**: 8時間  
+**コスト**: ~$0.04/枚（月30枚で約$1.2/月）
+
+### 📱 Phase 5: Instagram自動投稿（未着手）
+**目標**: Instagram Graph APIで完全自動投稿
 
 **成果物**:
-- [ ] Instagram Graph API連携
-- [ ] 投稿テンプレート
-- [ ] 自動投稿スクリプト
+- [ ] `instagram-post.py` - Instagram投稿スクリプト
+- [ ] Meta開発者アカウント設定
+- [ ] Instagramビジネスアカウント連携
+- [ ] 自動投稿ワークフロー
+
+**工数**: 10時間  
+**コスト**: $0（API使用料無料）
+
+---
+
+## 💰 月間ランニングコスト
+
+### Phase 1-5 完成時
+
+| API | 用途 | 月30回使用時 |
+|-----|------|-------------|
+| Claude API | 日記整形 | ~$0.3 |
+| DALL-E 3 | 画像生成 | ~$1.2 |
+| Instagram Graph API | 投稿 | $0 |
+| **合計** | | **~$1.5/月** |
+
+### コスト削減オプション
+
+- **Phase 1-3のみ**: 月額 ~$0.3（画像生成なし）
+- **Phase 1のみ**: 月額 ~$0.3（手動テキスト入力）
+
+### 初期コスト
+
+| 項目 | 価格 | 必須フェーズ |
+|------|------|-------------|
+| Meta開発者アカウント | $0 | Phase 5 |
+| Instagramビジネスアカウント | $0 | Phase 5 |
+| OpenAI APIアカウント | $0（初回$5クレジット） | Phase 4 |
+| SuperWhisper（オプション） | 買い切り | Phase 2 |
 
 ---
 
