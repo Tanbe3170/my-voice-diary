@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>日記作成 - My Voice Diary</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+</head>
+<body>
+  <header>
+    <h1>✏️ 日記を作成</h1>
+    <button onclick="location.href='index.html'">← 戻る</button>
+  </header>
+
+  <main>
+    <div class="input-methods">
+      <h2>入力方法を選択</h2>
+
+      <!-- 方法1: SuperWhisper貼り付け -->
+      <div class="method">
+        <h3>📱 SuperWhisper（推奨）</h3>
+        <p>SuperWhisperで音声をテキスト化し、下のテキストエリアに貼り付けてください。</p>
+      </div>
+
+      <!-- 方法2: Web Speech API -->
+      <div class="method">
+        <h3>🎤 ブラウザ音声認識</h3>
+        <button id="voice-btn" class="voice-button">
+          🎤 音声入力を開始
+        </button>
+        <span id="voice-status"></span>
+      </div>
+
+      <!-- 方法3: 手動入力 -->
+      <div class="method">
+        <h3>⌨️ 手動入力</h3>
+        <p>直接テキストを入力してください。</p>
+      </div>
+    </div>
+
+    <div class="input-area">
+      <label for="diary-text">日記の内容（口語でOK）</label>
+      <textarea
+        id="diary-text"
+        rows="15"
+        placeholder="今日は朝から...&#10;&#10;音声入力、または直接入力してください。"
+      ></textarea>
+
+      <button id="process-btn" class="primary-button">
+        🤖 Claude APIで整形してGitHubに保存
+      </button>
+
+      <div id="progress" style="display:none;">
+        <p>処理中...</p>
+        <progress id="progress-bar" max="100" value="0"></progress>
+      </div>
+
+      <div id="result" style="display:none;"></div>
+    </div>
+  </main>
+
+  <script>
+    // === Web Speech API 実装 ===
+    const voiceBtn = document.getElementById('voice-btn');
+    const voiceStatus = document.getElementById('voice-status');
+    const diaryText = document.getElementById('diary-text');
+
+    let recognition;
+    let isRecording = false;
+
+    // ブラウザの音声認識APIをチェック
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+      recognition.lang = 'ja-JP';
+      recognition.continuous = true;
+      recognition.interimResults = true;
+
+      voiceBtn.onclick = () => {
+        if (!isRecording) {
+          recognition.start();
+          isRecording = true;
+          voiceBtn.textContent = '⏹️ 停止';
+          voiceBtn.classList.add('recording');
+          voiceStatus.textContent = '🎤 録音中...';
+        } else {
+          recognition.stop();
+          isRecording = false;
+          voiceBtn.textContent = '🎤 音声入力を開始';
+          voiceBtn.classList.remove('recording');
+          voiceStatus.textContent = '';
+        }
+      };
+
+      recognition.onresult = (event) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript + ' ';
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+
+        if (finalTranscript) {
+          diaryText.value += finalTranscript;
+        }
+        voiceStatus.textContent = `🎤 認識中: ${interimTranscript}`;
+      };
+
+      recognition.onerror = (event) => {
+        console.error('音声認識エラー:', event.error);
+        voiceStatus.textContent = `❌ エラー: ${event.error}`;
+        isRecording = false;
+        voiceBtn.textContent = '🎤 音声入力を開始';
+        voiceBtn.classList.remove('recording');
+      };
+
+      recognition.onend = () => {
+        if (isRecording) {
+          recognition.start(); // 継続録音
+        }
+      };
+    } else {
+      voiceBtn.disabled = true;
+      voiceBtn.textContent = '❌ 音声認識非対応';
+      voiceStatus.textContent = 'このブラウザは音声認識に対応していません';
+    }
+
+    // === Claude API + GitHub API 連携処理 ===
+    const processBtn = document.getElementById('process-btn');
+    const progressDiv = document.getElementById('progress');
+    const progressBar = document.getElementById('progress-bar');
+    const resultDiv = document.getElementById('result');
+
+    processBtn.onclick = async () => {
+      const rawText = diaryText.value.trim();
+
+      if (!rawText) {
+        alert('日記の内容を入力してください。');
+        return;
+      }
+
+      // GitHub Personal Access Token（ユーザーに入力させる or LocalStorageから取得）
+      let githubToken = localStorage.getItem('github_token');
+      if (!githubToken) {
+        githubToken = prompt('GitHub Personal Access Token を入力してください:\n\n(初回のみ。LocalStorageに保存されます)');
+        if (!githubToken) {
+          alert('トークンが必要です。');
+          return;
+        }
+        localStorage.setItem('github_token', githubToken);
+      }
+
+      // Claude API Key（同様）
+      let claudeApiKey = localStorage.getItem('claude_api_key');
+      if (!claudeApiKey) {
+        claudeApiKey = prompt('Claude API Key を入力してください:\n\n(初回のみ。LocalStorageに保存されます)');
+        if (!claudeApiKey) {
+          alert('APIキーが必要です。');
+          return;
+        }
+        localStorage.setItem('claude_api_key', claudeApiKey);
+      }
+
+      processBtn.disabled = true;
+      progressDiv.style.display = 'block';
+      progressBar.value = 20;
+
+      try {
+        // ステップ1: Claude APIで日記整形
+        progressBar.value = 30;
+        const diaryData = await summarizeDiary(rawText, claudeApiKey);
+
+        progressBar.value = 60;
+
+        // ステップ2: Markdownファイル生成
+        const markdown = generateMarkdown(diaryData);
+
+        progressBar.value = 80;
+
+        // ステップ3: GitHub APIでpush
+        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+        const year = today.split('-')[0];
+        const month = today.split('-')[1];
+        const filePath = `diaries/${year}/${month}/${today}.md`;
+
+        await pushToGitHub(githubToken, filePath, markdown, diaryData.title);
+
+        progressBar.value = 100;
+
+        // 成功メッセージ
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = `
+          <div class="success">
+            <h3>✅ 日記の保存が完了しました！</h3>
+            <p><strong>タイトル:</strong> ${diaryData.title}</p>
+            <p><strong>ハッシュタグ:</strong> ${diaryData.tags.join(' ')}</p>
+            <p><a href="https://github.com/Tanbe3170/my-voice-diary/blob/main/${filePath}" target="_blank">
+              📂 GitHubで確認
+            </a></p>
+            <button onclick="location.href='index.html'">📖 日記一覧に戻る</button>
+          </div>
+        `;
+
+        diaryText.value = ''; // フォームクリア
+
+      } catch (error) {
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = `
+          <div class="error">
+            <h3>❌ エラーが発生しました</h3>
+            <p>${error.message}</p>
+          </div>
+        `;
+      } finally {
+        processBtn.disabled = false;
+        progressDiv.style.display = 'none';
+      }
+    };
+
+    // === Claude API 呼び出し関数 ===
+    async function summarizeDiary(rawText, apiKey) {
+      const today = new Date().toLocaleDateString('ja-JP', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).replace(/\//g, '年').replace(/年0?/, '年').replace(/月0?/, '月') + '日';
+
+      const prompt = `あなたは日記執筆のアシスタントです。以下の音声入力テキスト（口語）を、文語の日記形式に整形してください。
+
+【音声入力テキスト】
+${rawText}
+
+【出力形式】
+以下のJSON形式で出力してください。JSONの前後に説明文は不要です。
+
+\`\`\`json
+{
+  "date": "${today}",
+  "title": "その日の出来事を要約した魅力的なタイトル（15文字以内）",
+  "summary": "3行サマリー（1行30文字程度、改行で区切る）",
+  "body": "詳細な日記本文（段落分けあり、文語体で整った文章）",
+  "tags": ["関連するハッシュタグ", "5個程度"],
+  "image_prompt": "この日記から1枚の画像を生成するための英語プロンプト（DALL-E用、詳細に）"
+}
+\`\`\`
+
+【整形のルール】
+1. 口語（「〜でした」「〜なんだけど」）→ 文語（「〜だった」「〜だが」）
+2. タイトルは読者の興味を引く工夫をする
+3. サマリーは3行で要点をまとめる
+4. 本文は適度に段落分けし、読みやすくする
+5. ハッシュタグはInstagram投稿を想定（#日記 #今日の出来事 など）
+6. 画像プロンプトは情景が浮かぶような具体的な英語で記述
+
+それでは、音声入力テキストを日記に整形してください。`;
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 2000,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(`Claude API エラー: ${error.error.message}`);
+      }
+
+      const data = await response.json();
+      const responseText = data.content[0].text;
+
+      // JSON抽出（```json ... ``` または {...} を抽出）
+      const jsonMatch = responseText.match(/```json\s*(\{.*?\})\s*```/s) ||
+                        responseText.match(/(\{.*\})/s);
+
+      if (!jsonMatch) {
+        throw new Error('Claude APIのレスポンスからJSONを抽出できませんでした');
+      }
+
+      return JSON.parse(jsonMatch[1]);
+    }
+
+    // === Markdown生成関数 ===
+    function generateMarkdown(diaryData) {
+      const today = new Date().toISOString().split('T')[0];
+      const tags = diaryData.tags.map(tag => tag.startsWith('#') ? tag : '#' + tag);
+
+      return `---
+title: "${diaryData.title}"
+date: ${today}
+tags: [${tags.join(', ')}]
+image_prompt: "${diaryData.image_prompt}"
+---
+
+# ${diaryData.title}
+
+## 📅 ${today}
+
+### 📖 サマリー
+
+${diaryData.summary}
+
+---
+
+${diaryData.body}
+
+---
+
+**Tags:** ${tags.join(' ')}
+`;
+    }
+
+    // === GitHub API Push関数 ===
+    async function pushToGitHub(token, filePath, content, commitMessage) {
+      const owner = 'Tanbe3170';
+      const repo = 'my-voice-diary';
+      const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`;
+
+      // 既存ファイルのSHA取得（上書き時に必要）
+      let sha;
+      try {
+        const getResponse = await fetch(apiUrl, {
+          headers: {
+            'Authorization': `token ${token}`,
+            'Accept': 'application/vnd.github.v3+json'
+          }
+        });
+        if (getResponse.ok) {
+          const data = await getResponse.json();
+          sha = data.sha;
+        }
+      } catch (e) {
+        // ファイルが存在しない場合はsha不要
+      }
+
+      // Base64エンコード
+      const contentBase64 = btoa(unescape(encodeURIComponent(content)));
+
+      const body = {
+        message: `diary: ${new Date().toISOString().split('T')[0]} - ${commitMessage}`,
+        content: contentBase64,
+        branch: 'main'
+      };
+
+      if (sha) {
+        body.sha = sha; // 既存ファイル上書き
+      }
+
+      const response = await fetch(apiUrl, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `token ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(`GitHub API エラー: ${error.message}`);
+      }
+
+      return await response.json();
+    }
+  </script>
+</body>
+</html>

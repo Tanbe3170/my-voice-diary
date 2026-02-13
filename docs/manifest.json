@@ -1,0 +1,21 @@
+{
+  "name": "My Voice Diary",
+  "short_name": "Voice Diary",
+  "description": "音声入力で書く毎日の日記",
+  "start_url": "/my-voice-diary/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#4F46E5",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

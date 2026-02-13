@@ -36,3 +36,7 @@ logs/
 tmp/
 temp/
 *.tmp
+
+# === Claude Code作業計画ファイル ===
+plans/
+*.plan.md

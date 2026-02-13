@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Voice Diary</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+</head>
+<body>
+  <header>
+    <h1>📖 My Voice Diary</h1>
+    <button id="create-diary-btn" onclick="location.href='diary-input.html'">
+      ✏️ 新しい日記を作成
+    </button>
+  </header>
+
+  <main>
+    <section id="calendar-view">
+      <!-- カレンダーをJavaScriptで動的生成 -->
+    </section>
+
+    <section id="diary-list">
+      <!-- 日記一覧をJavaScriptで動的生成 -->
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
