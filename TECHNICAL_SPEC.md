@@ -399,7 +399,32 @@ export GITHUB_TOKEN="ghp_..."
 
 ---
 
-### 8.2 データプライバシー
+### 8.2 Webアプリケーションセキュリティ（Phase 2）
+
+**XSS対策**:
+- ✅ innerHTML使用禁止 - すべてDOM構築（createElement + textContent）に変更
+- ✅ 外部データ（Claude API、GitHub API応答）を安全に表示
+- ✅ showError関数もDOM構築方式
+
+**APIキー保護（暫定対策）**:
+- ✅ localStorage → sessionStorage移行（ブラウザタブ終了で自動削除）
+- ✅ セキュリティ警告の表示（個人使用、共有PC禁止）
+- ✅ beforeunloadイベントでsessionStorage削除
+- ⚠️ 暫定措置: Phase 2.5で根本解決予定
+
+**Phase 2.5での完全対策（計画中）**:
+- Vercel Serverless Function導入
+- APIキーをブラウザから完全削除（サーバー側保持）
+- 短命セッショントークン方式
+- 詳細: PHASE_2.5_GUIDE.md参照
+
+**codex-review結果**:
+- Phase 2: ok: true（XSS問題解決）
+- Phase 2.5: 未実施（実装後にレビュー予定）
+
+---
+
+### 8.3 データプライバシー
 
 **公開範囲**:
 - GitHubリポジトリ: Public（変更可能）

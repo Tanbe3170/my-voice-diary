@@ -144,26 +144,47 @@
         return;
       }
 
-      // GitHub Personal Access Token（ユーザーに入力させる or LocalStorageから取得）
-      let githubToken = localStorage.getItem('github_token');
+      // GitHub Personal Access Token（セキュリティ改善: sessionStorageに変更）
+      let githubToken = sessionStorage.getItem('github_token');
       if (!githubToken) {
-        githubToken = prompt('GitHub Personal Access Token を入力してください:\n\n(初回のみ。LocalStorageに保存されます)');
+        // セキュリティ警告を表示
+        const securityWarning = `⚠️ セキュリティ警告（暫定措置）
+
+このアプリは個人使用を前提としており、APIキーをブラウザに一時保存します。
+
+【注意事項】
+• 共有PCでは使用しないでください
+• 信頼できないブラウザ拡張機能を無効にしてください
+• sessionStorage使用のため通常はタブ終了で消えますが、完全保証ではありません
+• ブラウザクラッシュ時の挙動はブラウザ依存です
+• 本番環境では使用しないでください
+
+【推奨】Phase 2.5でサーバーレス関数への移行を予定しています。
+詳細: PHASE_2.5_GUIDE.md
+
+続行しますか？`;
+
+        if (!confirm(securityWarning)) {
+          return;
+        }
+
+        githubToken = prompt('GitHub Personal Access Token を入力してください:\n\n(ブラウザを閉じると削除されます)');
         if (!githubToken) {
           alert('トークンが必要です。');
           return;
         }
-        localStorage.setItem('github_token', githubToken);
+        sessionStorage.setItem('github_token', githubToken);
       }
 
       // Claude API Key（同様）
-      let claudeApiKey = localStorage.getItem('claude_api_key');
+      let claudeApiKey = sessionStorage.getItem('claude_api_key');
       if (!claudeApiKey) {
-        claudeApiKey = prompt('Claude API Key を入力してください:\n\n(初回のみ。LocalStorageに保存されます)');
+        claudeApiKey = prompt('Claude API Key を入力してください:\n\n(ブラウザを閉じると削除されます)');
         if (!claudeApiKey) {
           alert('APIキーが必要です。');
           return;
         }
-        localStorage.setItem('claude_api_key', claudeApiKey);
+        sessionStorage.setItem('claude_api_key', claudeApiKey);
       }
 
       processBtn.disabled = true;
@@ -192,30 +213,65 @@
 
         progressBar.value = 100;
 
-        // 成功メッセージ
+        // 成功メッセージ（XSS対策: DOM構築）
         resultDiv.style.display = 'block';
-        resultDiv.innerHTML = `
-          <div class="success">
-            <h3>✅ 日記の保存が完了しました！</h3>
-            <p><strong>タイトル:</strong> ${diaryData.title}</p>
-            <p><strong>ハッシュタグ:</strong> ${diaryData.tags.join(' ')}</p>
-            <p><a href="https://github.com/Tanbe3170/my-voice-diary/blob/main/${filePath}" target="_blank">
-              📂 GitHubで確認
-            </a></p>
-            <button onclick="location.href='index.html'">📖 日記一覧に戻る</button>
-          </div>
-        `;
+        resultDiv.textContent = ''; // クリア
+
+        const successDiv = document.createElement('div');
+        successDiv.className = 'success';
+
+        const successH3 = document.createElement('h3');
+        successH3.textContent = '✅ 日記の保存が完了しました！';
+        successDiv.appendChild(successH3);
+
+        const titleP = document.createElement('p');
+        const titleStrong = document.createElement('strong');
+        titleStrong.textContent = 'タイトル: ';
+        titleP.appendChild(titleStrong);
+        titleP.appendChild(document.createTextNode(diaryData.title));
+        successDiv.appendChild(titleP);
+
+        const tagsP = document.createElement('p');
+        const tagsStrong = document.createElement('strong');
+        tagsStrong.textContent = 'ハッシュタグ: ';
+        tagsP.appendChild(tagsStrong);
+        tagsP.appendChild(document.createTextNode(diaryData.tags.join(' ')));
+        successDiv.appendChild(tagsP);
+
+        const linkP = document.createElement('p');
+        const githubLink = document.createElement('a');
+        githubLink.href = `https://github.com/Tanbe3170/my-voice-diary/blob/main/${filePath}`;
+        githubLink.target = '_blank';
+        githubLink.textContent = '📂 GitHubで確認';
+        linkP.appendChild(githubLink);
+        successDiv.appendChild(linkP);
+
+        const backBtn = document.createElement('button');
+        backBtn.textContent = '📖 日記一覧に戻る';
+        backBtn.onclick = () => location.href = 'index.html';
+        successDiv.appendChild(backBtn);
+
+        resultDiv.appendChild(successDiv);
 
         diaryText.value = ''; // フォームクリア
 
       } catch (error) {
+        // エラーメッセージ（XSS対策: DOM構築）
         resultDiv.style.display = 'block';
-        resultDiv.innerHTML = `
-          <div class="error">
-            <h3>❌ エラーが発生しました</h3>
-            <p>${error.message}</p>
-          </div>
-        `;
+        resultDiv.textContent = ''; // クリア
+
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error';
+
+        const errorH3 = document.createElement('h3');
+        errorH3.textContent = '❌ エラーが発生しました';
+        errorDiv.appendChild(errorH3);
+
+        const errorP = document.createElement('p');
+        errorP.textContent = error.message;
+        errorDiv.appendChild(errorP);
+
+        resultDiv.appendChild(errorDiv);
       } finally {
         processBtn.disabled = false;
         progressDiv.style.display = 'none';
@@ -375,6 +431,12 @@ ${diaryData.body}
 
       return await response.json();
     }
+
+    // === セキュリティ: ページ終了時にトークンを自動削除 ===
+    window.addEventListener('beforeunload', () => {
+      sessionStorage.removeItem('github_token');
+      sessionStorage.removeItem('claude_api_key');
+    });
   </script>
 </body>
 </html>

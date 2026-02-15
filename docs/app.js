@@ -401,17 +401,40 @@ function renderDiaryList(diaries) {
     // 日付の表示形式を整形（2026-02-11 → 2026年2月11日）
     const dateDisplay = formatDateJP(diary.date);
 
-    // タグHTML生成
-    const tagsHTML = diary.tags
-      .map(tag => `<span class="diary-tag">${tag}</span>`)
-      .join('');
+    // XSS対策: textContentでDOM要素を安全に構築
+    const dateDiv = document.createElement('div');
+    dateDiv.className = 'diary-card-date';
+    dateDiv.textContent = `📅 ${dateDisplay}`;
 
-    card.innerHTML = `
-      <div class="diary-card-date">📅 ${dateDisplay}</div>
-      <div class="diary-card-title">${diary.title}</div>
-      ${diary.summary ? `<div class="diary-card-summary">${diary.summary}</div>` : ''}
-      ${tagsHTML ? `<div class="diary-card-tags">${tagsHTML}</div>` : ''}
-    `;
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'diary-card-title';
+    titleDiv.textContent = diary.title;
+
+    card.appendChild(dateDiv);
+    card.appendChild(titleDiv);
+
+    // サマリーがあれば追加
+    if (diary.summary) {
+      const summaryDiv = document.createElement('div');
+      summaryDiv.className = 'diary-card-summary';
+      summaryDiv.textContent = diary.summary;
+      card.appendChild(summaryDiv);
+    }
+
+    // タグがあれば追加
+    if (diary.tags && diary.tags.length > 0) {
+      const tagsDiv = document.createElement('div');
+      tagsDiv.className = 'diary-card-tags';
+
+      diary.tags.forEach(tag => {
+        const tagSpan = document.createElement('span');
+        tagSpan.className = 'diary-tag';
+        tagSpan.textContent = tag;
+        tagsDiv.appendChild(tagSpan);
+      });
+
+      card.appendChild(tagsDiv);
+    }
 
     // カードクリックでGitHubの日記ファイルを開く
     card.addEventListener('click', () => {
@@ -527,14 +550,24 @@ function showLoading(container) {
   `;
 }
 
-// === エラー表示 ===
+// === エラー表示（XSS対策: DOM構築） ===
 function showError(container, message) {
-  container.innerHTML = `
-    <div class="empty-state">
-      <div class="empty-state-icon">⚠️</div>
-      <p class="empty-state-text">${message}</p>
-    </div>
-  `;
+  container.textContent = ''; // クリア
+
+  const emptyDiv = document.createElement('div');
+  emptyDiv.className = 'empty-state';
+
+  const iconDiv = document.createElement('div');
+  iconDiv.className = 'empty-state-icon';
+  iconDiv.textContent = '⚠️';
+  emptyDiv.appendChild(iconDiv);
+
+  const textP = document.createElement('p');
+  textP.className = 'empty-state-text';
+  textP.textContent = message;
+  emptyDiv.appendChild(textP);
+
+  container.appendChild(emptyDiv);
 }
 
 // === アプリケーション初期化 ===

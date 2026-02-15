@@ -173,6 +173,41 @@ pip install anthropic pyyaml requests
 - [Claude API Documentation](https://docs.anthropic.com/)
 - [Nerd Dictation](https://github.com/ideasman42/nerd-dictation)
 - [GitHub Pages](https://pages.github.com/)
+- [Vercel Serverless Functions](https://vercel.com/docs/functions)
+
+---
+
+## 🚧 開発状況
+
+### ✅ Phase 1: 基本機能（完了）
+- Python環境構築
+- Claude API連携
+- GitHub自動保存
+- 日記整形機能
+
+### ✅ Phase 2: Webインターフェース（完了）
+- Web Speech API音声入力
+- GitHub Pages静的サイト
+- PWA対応（manifest.json, service-worker.js）
+- **セキュリティ修正**:
+  - XSS脆弱性対策（innerHTML → DOM構築）
+  - localStorage → sessionStorage移行
+  - codex-review: ok ✅
+
+### 📅 Phase 2.5: セキュリティ強化（計画中）
+- Vercel Serverless Function導入
+- APIキーのブラウザからの完全削除
+- サーバー側シークレット管理
+- 詳細: [PHASE_2.5_GUIDE.md](PHASE_2.5_GUIDE.md)
+
+### 📅 Phase 3-5: 今後の予定
+- Phase 3: Ubuntu音声認識（Nerd Dictation）
+- Phase 4: AI画像生成（DALL-E 3）
+- Phase 5: Instagram自動投稿
+
+**最終更新**: 2026年2月15日
+
+---
 
 ## 📄 ライセンス
 

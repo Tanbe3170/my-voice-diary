@@ -877,6 +877,60 @@ self.addEventListener('fetch', (event) => {
 
 ---
 
+## 🔐 Phase 2.5: セキュリティ強化（オプション・推奨）
+
+### 目標
+Phase 2で検出されたセキュリティ問題（localStorage問題）を根本解決するため、サーバーレス関数（Vercel）を導入し、APIキーをブラウザから完全に排除する。
+
+### 所要時間
+約4時間（初学者向け）
+
+### 前提条件
+- Phase 2完了
+- Vercelアカウント（無料）
+- Node.js 18以上
+
+### 詳細ドキュメント
+👉 **[PHASE_2.5_GUIDE.md](PHASE_2.5_GUIDE.md)** - 初学者向け完全ガイド
+
+### 主要タスク
+
+#### タスク2.5.1: Vercelアカウント準備（10分）
+- Vercelアカウント作成
+- GitHubリポジトリ接続
+
+#### タスク2.5.2: 環境変数設定（5分）
+- GITHUB_TOKEN, CLAUDE_API_KEY, GITHUB_OWNER, GITHUB_REPO
+
+#### タスク2.5.3: サーバーレス関数実装（1.5時間）
+- `api/create-diary.js` 作成
+
+#### タスク2.5.4: フロントエンド更新（30分）
+- `docs/diary-input.html` を更新（APIキー削除）
+
+#### タスク2.5.5: デプロイとテスト（30分）
+- Git push → Vercel自動デプロイ
+
+#### タスク2.5.6: codex-review実施（必須）
+**実施手順:** CODEX_REVIEW_GUIDE.md を参照
+**レビュー対象:** api/create-diary.js
+
+---
+
+### Phase 2.5 完了基準
+
+- [ ] Vercelアカウント作成完了
+- [ ] 環境変数設定完了
+- [ ] `api/create-diary.js` 実装完了
+- [ ] フロントエンドからAPIキー削除完了
+- [ ] Vercelデプロイ成功
+- [ ] 実際に日記作成が動作する（APIキー入力なし）
+- [ ] codex-reviewで `ok: true` 確認
+
+**セキュリティレベル**: ⭐⭐⭐⭐⭐（Phase 2の問題を完全解決）
+
+---
+
 ## 🎤 Phase 3: Ubuntu音声認識（Nerd Dictation）【新規】
 
 ### 目標

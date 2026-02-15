@@ -2,12 +2,13 @@
 
 ## 📌 プロジェクト基本情報
 
-**プロジェクト名**: voice-diary (音声入力日記システム)  
-**開発者**: Minori  
-**開発環境**: Ubuntu 22.04 LTS (MacBook Air 2017, 8GB RAM)  
-**IDE**: VSCode + Claude拡張機能  
-**開始日**: 2025年2月  
-**現在のフェーズ**: Phase 1（基本機能実装）
+**プロジェクト名**: voice-diary (音声入力日記システム)
+**開発者**: Minori
+**開発環境**: Ubuntu 22.04 LTS (MacBook Air 2017, 8GB RAM)
+**IDE**: VSCode + Claude拡張機能
+**開始日**: 2025年2月
+**現在のフェーズ**: Phase 2完了、Phase 2.5計画中（セキュリティ強化）
+**最終更新**: 2026年2月15日
 
 ---
 

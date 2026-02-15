@@ -17,8 +17,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **開発フェーズ:**
 - Phase 1: 基本機能（✅ 完了）
-- Phase 2: Webインターフェース（🔄 進行中 - index.html, diary-input.html, style.css 作成済み）
+- Phase 2: Webインターフェース（✅ 完了 - セキュリティ修正済み）
+- Phase 2.5: セキュリティ強化（📅 計画中 - Vercel Serverless Function導入）
 - Phase 3-5: 音声認識、画像生成、Instagram投稿（📅 未着手）
+
+**最新の変更（2026-02-15）:**
+- Phase 2のcodex-review完了（ok: true）
+- XSS脆弱性修正（innerHTML → DOM構築）
+- localStorage → sessionStorage移行（暫定対策）
+- Phase 2.5の実装計画追加（PHASE_2.5_GUIDE.md）
 
 ---
 
