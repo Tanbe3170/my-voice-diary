@@ -1,6 +1,6 @@
 # voice-diary 実装計画 v2（音声入力＋Instagram自動投稿対応版）
 
-> **更新日**: 2025年2月9日  
+> **更新日**: 2025年2月11日  
 > **対象**: 音声入力（スマホ＋Ubuntu）とInstagram Graph API完全自動投稿を含む完全版
 
 ---
@@ -113,6 +113,13 @@ bash scripts/diary-push.sh "今日はGitHub Pagesの基本構造を学習した�
 
 **改善が必要な場合**:
 → `TECHNICAL_SPEC.md` の「7.1 日記整形プロンプト」を調整
+
+---
+
+#### タスク1.8: codex-review実施（必須）
+
+**実施手順:** CODEX_REVIEW_GUIDE.md を参照
+**レビュー対象:** scripts/ 配下の diary-summarize.py, diary-push.sh
 
 ---
 
@@ -852,6 +859,13 @@ self.addEventListener('fetch', (event) => {
 
 ---
 
+### タスク2.9: codex-review実施（必須）
+
+**実施手順:** CODEX_REVIEW_GUIDE.md を参照
+**レビュー対象:** docs/ 配下全ファイル
+
+---
+
 ### Phase 2 完了基準
 
 - [ ] GitHub Pagesが表示される
@@ -1039,6 +1053,13 @@ diary-voice
 # 手動テキスト入力モード
 diary "今日は..."
 ```
+
+---
+
+### タスク3.5: codex-review実施（必須）
+
+**実施手順:** CODEX_REVIEW_GUIDE.md を参照
+**レビュー対象:** scripts/diary-voice.sh
 
 ---
 
@@ -1299,6 +1320,13 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     fi
 fi
 ```
+
+---
+
+### タスク4.4: codex-review実施（必須）
+
+**実施手順:** CODEX_REVIEW_GUIDE.md を参照
+**レビュー対象:** scripts/image-gen.py
 
 ---
 
@@ -1753,6 +1781,13 @@ fi
 
 ---
 
+### タスク5.4: codex-review実施（必須）
+
+**実施手順:** CODEX_REVIEW_GUIDE.md を参照
+**レビュー対象:** scripts/instagram-post.py
+
+---
+
 ### Phase 5 完了基準
 
 - [ ] Meta開発者アカウントが作成された
@@ -1847,8 +1882,7 @@ voice-diary/
 - [ ] OpenAI APIキーは取得済みか？
 - [ ] Instagramビジネスアカウントは作成済みか？
 
----
 
-**作成日**: 2025年2月9日  
+**作成日**: 2025年2月11日  
 **バージョン**: 2.0  
 **対象**: 音声入力＋Instagram自動投稿完全版

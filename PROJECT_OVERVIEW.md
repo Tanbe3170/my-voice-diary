@@ -367,7 +367,19 @@ bash ~/diary/scripts/diary-push.sh "$(xclip -o)"
 
 ---
 
-## 🤝 開発の進め方
+## 開発フロー
+各Phaseの開発は以下の流れで進めます：
+1. **設計・実装**
+- IMPLEMENTATION_PLAN.mdのタスクに従って実装
+2. **動作確認**
+- 各タスクの期待動作を確認
+3. **codex-review（必須）** ← 追加
+- .claude/skills/codex-review を使用
+- レビュー→修正→再レビューのサイクル
+- 詳細: CODEX_REVIEW_GUIDE.md 参照
+4. **Phase完了記録**
+- PROJECT_OVERVIEW.mdに完了を記録
+- 次のPhaseへ進む
 
 ### 基本方針
 1. **MVP優先**: 最小限の機能から実装
