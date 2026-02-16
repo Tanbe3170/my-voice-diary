@@ -619,7 +619,8 @@ document.addEventListener('DOMContentLoaded', init);
 // PWA対応：オフライン機能とキャッシュ管理
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/my-voice-diary/service-worker.js')
+    // 相対パスを使用（GitHub Pages/Vercel両対応）
+    navigator.serviceWorker.register('./service-worker.js')
       .then((registration) => {
         console.log('✅ Service Worker登録成功:', registration.scope);
       })

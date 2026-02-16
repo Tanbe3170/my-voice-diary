@@ -359,26 +359,43 @@ bash scripts/diary-push.sh "今日はGitHub Pagesの基本構造を学習した�
         return;
       }
 
-      // GitHub Personal Access Token（ユーザーに入力させる or LocalStorageから取得）
-      let githubToken = localStorage.getItem('github_token');
+      // GitHub Personal Access Token（セキュリティ改善: sessionStorageに変更）
+      // ※Phase 2では当初localStorageを使用していたが、セキュリティレビュー後にsessionStorageへ移行
+      let githubToken = sessionStorage.getItem('github_token');
       if (!githubToken) {
-        githubToken = prompt('GitHub Personal Access Token を入力してください:\n\n(初回のみ。LocalStorageに保存されます)');
+        // セキュリティ警告を表示
+        const securityWarning = `⚠️ セキュリティ警告（暫定措置）
+
+このアプリは個人使用を前提としており、APIキーをブラウザに一時保存します。
+
+【注意事項】
+• 共有PCでは使用しないでください
+• sessionStorage使用のためタブ終了で消えますが、完全保証ではありません
+• 本番環境では使用しないでください
+
+【推奨】Phase 2.5でサーバーレス関数への移行を予定しています。`;
+
+        if (!confirm(securityWarning)) {
+          return;
+        }
+
+        githubToken = prompt('GitHub Personal Access Token を入力してください:\n\n(ブラウザを閉じると削除されます)');
         if (!githubToken) {
           alert('トークンが必要です。');
           return;
         }
-        localStorage.setItem('github_token', githubToken);
+        sessionStorage.setItem('github_token', githubToken);
       }
 
       // Claude API Key（同様）
-      let claudeApiKey = localStorage.getItem('claude_api_key');
+      let claudeApiKey = sessionStorage.getItem('claude_api_key');
       if (!claudeApiKey) {
-        claudeApiKey = prompt('Claude API Key を入力してください:\n\n(初回のみ。LocalStorageに保存されます)');
+        claudeApiKey = prompt('Claude API Key を入力してください:\n\n(ブラウザを閉じると削除されます)');
         if (!claudeApiKey) {
           alert('APIキーが必要です。');
           return;
         }
-        localStorage.setItem('claude_api_key', claudeApiKey);
+        sessionStorage.setItem('claude_api_key', claudeApiKey);
       }
 
       processBtn.disabled = true;

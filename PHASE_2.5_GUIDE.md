@@ -143,13 +143,18 @@ mkdir -p api
 
 export default async function handler(req, res) {
   // === CORS設定（ブラウザからのアクセスを許可） ===
-  res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
-  );
+  // セキュリティ強化: 特定のOriginのみ許可（環境変数で設定可能）
+  const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',')
+    : ['https://tanbe3170.github.io', 'https://your-project.vercel.app'];
+
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+
+  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   // OPTIONSリクエスト（プリフライト）への対応
   if (req.method === 'OPTIONS') {
@@ -163,12 +168,28 @@ export default async function handler(req, res) {
   }
 
   try {
-    // === リクエストボディから日記の生テキストを取得 ===
+    // === 入力検証とセキュリティチェック ===
     const { rawText } = req.body;
 
+    // 入力値の存在チェック
     if (!rawText) {
       return res.status(400).json({ error: '日記の内容が必要です' });
     }
+
+    // 型チェック
+    if (typeof rawText !== 'string') {
+      return res.status(400).json({ error: '不正な入力形式です' });
+    }
+
+    // 長さ制限（10000文字まで）
+    if (rawText.length > 10000) {
+      return res.status(400).json({ error: '日記の内容が長すぎます（10000文字以内）' });
+    }
+
+    // レート制限（推奨）
+    // NOTE: 本番環境では、Vercel Edge Configやレート制限ミドルウェアを使用して
+    // IPアドレスごとに1分あたり5回までなどの制限を設けることを推奨します。
+    // 例: https://vercel.com/docs/edge-network/rate-limiting
 
     // === 環境変数から取得（Vercelの設定画面で設定済み） ===
     const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY;
@@ -349,10 +370,12 @@ ${diaryData.body}
     });
 
   } catch (error) {
-    // エラーハンドリング
-    console.error('サーバーエラー:', error);
+    // エラーハンドリング（情報露出抑制）
+    console.error('サーバーエラー:', error); // サーバーログに詳細を記録
+
+    // クライアントには一般的なエラーメッセージのみ返す（セキュリティ強化）
     return res.status(500).json({
-      error: error.message || 'Internal Server Error'
+      error: '日記の作成中にエラーが発生しました。しばらくしてから再度お試しください。'
     });
   }
 }
@@ -572,13 +595,15 @@ api/create-diary.jsの先頭でCORSヘッダーが設定されているか確認
 
 Phase 2.5が完了したと判断できる基準：
 
-- [x] Vercelアカウントが作成された
-- [x] 環境変数がVercelに設定された
-- [x] `api/create-diary.js` が実装された
-- [x] フロントエンドからAPIキーが削除された
-- [x] Vercelにデプロイが成功した
-- [x] 実際に日記作成が動作する（APIキー入力なし）
+- [ ] Vercelアカウントが作成された
+- [ ] 環境変数がVercelに設定された
+- [ ] `api/create-diary.js` が実装された
+- [ ] フロントエンドからAPIキーが削除された
+- [ ] Vercelにデプロイが成功した
+- [ ] 実際に日記作成が動作する（APIキー入力なし）
 - [ ] codex-reviewで `ok: true` が返される
+
+**注意**: これらのチェックは、Phase 2.5を実装した後に順次確認してください。現在はまだ未実装です。
 
 すべてチェックが付いたら、**Phase 2.5完了**です！
 
