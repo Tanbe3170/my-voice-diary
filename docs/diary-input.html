@@ -130,7 +130,7 @@
       voiceStatus.textContent = 'このブラウザは音声認識に対応していません';
     }
 
-    // === Claude API + GitHub API 連携処理 ===
+    // === Phase 2.5: Vercel Function連携処理 ===
     const processBtn = document.getElementById('process-btn');
     const progressDiv = document.getElementById('progress');
     const progressBar = document.getElementById('progress-bar');
@@ -144,47 +144,15 @@
         return;
       }
 
-      // GitHub Personal Access Token（セキュリティ改善: sessionStorageに変更）
-      let githubToken = sessionStorage.getItem('github_token');
-      if (!githubToken) {
-        // セキュリティ警告を表示
-        const securityWarning = `⚠️ セキュリティ警告（暫定措置）
-
-このアプリは個人使用を前提としており、APIキーをブラウザに一時保存します。
-
-【注意事項】
-• 共有PCでは使用しないでください
-• 信頼できないブラウザ拡張機能を無効にしてください
-• sessionStorage使用のため通常はタブ終了で消えますが、完全保証ではありません
-• ブラウザクラッシュ時の挙動はブラウザ依存です
-• 本番環境では使用しないでください
-
-【推奨】Phase 2.5でサーバーレス関数への移行を予定しています。
-詳細: PHASE_2.5_GUIDE.md
-
-続行しますか？`;
-
-        if (!confirm(securityWarning)) {
+      // Phase 2.5: Vercel Functionへのリクエスト用AUTH_TOKEN
+      let authToken = sessionStorage.getItem('auth_token');
+      if (!authToken) {
+        authToken = prompt('認証トークンを入力してください:\n\n※ このトークンは管理者から提供されます。\n※ APIキーはサーバー側で安全に管理されています。');
+        if (!authToken) {
+          alert('認証トークンが必要です。');
           return;
         }
-
-        githubToken = prompt('GitHub Personal Access Token を入力してください:\n\n(ブラウザを閉じると削除されます)');
-        if (!githubToken) {
-          alert('トークンが必要です。');
-          return;
-        }
-        sessionStorage.setItem('github_token', githubToken);
-      }
-
-      // Claude API Key（同様）
-      let claudeApiKey = sessionStorage.getItem('claude_api_key');
-      if (!claudeApiKey) {
-        claudeApiKey = prompt('Claude API Key を入力してください:\n\n(ブラウザを閉じると削除されます)');
-        if (!claudeApiKey) {
-          alert('APIキーが必要です。');
-          return;
-        }
-        sessionStorage.setItem('claude_api_key', claudeApiKey);
+        sessionStorage.setItem('auth_token', authToken);
       }
 
       processBtn.disabled = true;
@@ -192,28 +160,29 @@
       progressBar.value = 20;
 
       try {
-        // ステップ1: Claude APIで日記整形
+        // Phase 2.5: Vercel Functionに日記作成をリクエスト
         progressBar.value = 30;
-        const diaryData = await summarizeDiary(rawText, claudeApiKey);
 
-        progressBar.value = 60;
+        const response = await fetch('/api/create-diary', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Auth-Token': authToken
+          },
+          body: JSON.stringify({ rawText })
+        });
 
-        // ステップ2: Markdownファイル生成
-        const markdown = generateMarkdown(diaryData);
+        progressBar.value = 70;
 
-        progressBar.value = 80;
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || '日記の作成に失敗しました。');
+        }
 
-        // ステップ3: GitHub APIでpush
-        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-        const year = today.split('-')[0];
-        const month = today.split('-')[1];
-        const filePath = `diaries/${year}/${month}/${today}.md`;
-
-        await pushToGitHub(githubToken, filePath, markdown, diaryData.title);
-
+        const result = await response.json();
         progressBar.value = 100;
 
-        // 成功メッセージ（XSS対策: DOM構築）
+        // 成功メッセージ（Vercel Functionからのレスポンスを使用）
         resultDiv.style.display = 'block';
         resultDiv.textContent = ''; // クリア
 
@@ -228,19 +197,19 @@
         const titleStrong = document.createElement('strong');
         titleStrong.textContent = 'タイトル: ';
         titleP.appendChild(titleStrong);
-        titleP.appendChild(document.createTextNode(diaryData.title));
+        titleP.appendChild(document.createTextNode(result.title));
         successDiv.appendChild(titleP);
 
         const tagsP = document.createElement('p');
         const tagsStrong = document.createElement('strong');
         tagsStrong.textContent = 'ハッシュタグ: ';
         tagsP.appendChild(tagsStrong);
-        tagsP.appendChild(document.createTextNode(diaryData.tags.join(' ')));
+        tagsP.appendChild(document.createTextNode(result.tags.join(' ')));
         successDiv.appendChild(tagsP);
 
         const linkP = document.createElement('p');
         const githubLink = document.createElement('a');
-        githubLink.href = `https://github.com/Tanbe3170/my-voice-diary/blob/main/${filePath}`;
+        githubLink.href = result.githubUrl;
         githubLink.target = '_blank';
         githubLink.textContent = '📂 GitHubで確認';
         linkP.appendChild(githubLink);
@@ -278,164 +247,9 @@
       }
     };
 
-    // === Claude API 呼び出し関数 ===
-    async function summarizeDiary(rawText, apiKey) {
-      const today = new Date().toLocaleDateString('ja-JP', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      }).replace(/\//g, '年').replace(/年0?/, '年').replace(/月0?/, '月') + '日';
-
-      const prompt = `あなたは日記執筆のアシスタントです。以下の音声入力テキスト（口語）を、文語の日記形式に整形してください。
-
-【音声入力テキスト】
-${rawText}
-
-【出力形式】
-以下のJSON形式で出力してください。JSONの前後に説明文は不要です。
-
-\`\`\`json
-{
-  "date": "${today}",
-  "title": "その日の出来事を要約した魅力的なタイトル（15文字以内）",
-  "summary": "3行サマリー（1行30文字程度、改行で区切る）",
-  "body": "詳細な日記本文（段落分けあり、文語体で整った文章）",
-  "tags": ["関連するハッシュタグ", "5個程度"],
-  "image_prompt": "この日記から1枚の画像を生成するための英語プロンプト（DALL-E用、詳細に）"
-}
-\`\`\`
-
-【整形のルール】
-1. 口語（「〜でした」「〜なんだけど」）→ 文語（「〜だった」「〜だが」）
-2. タイトルは読者の興味を引く工夫をする
-3. サマリーは3行で要点をまとめる
-4. 本文は適度に段落分けし、読みやすくする
-5. ハッシュタグはInstagram投稿を想定（#日記 #今日の出来事 など）
-6. 画像プロンプトは情景が浮かぶような具体的な英語で記述
-
-それでは、音声入力テキストを日記に整形してください。`;
-
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 2000,
-          messages: [{ role: 'user', content: prompt }]
-        })
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`Claude API エラー: ${error.error.message}`);
-      }
-
-      const data = await response.json();
-      const responseText = data.content[0].text;
-
-      // JSON抽出（```json ... ``` または {...} を抽出）
-      const jsonMatch = responseText.match(/```json\s*(\{.*?\})\s*```/s) ||
-                        responseText.match(/(\{.*\})/s);
-
-      if (!jsonMatch) {
-        throw new Error('Claude APIのレスポンスからJSONを抽出できませんでした');
-      }
-
-      return JSON.parse(jsonMatch[1]);
-    }
-
-    // === Markdown生成関数 ===
-    function generateMarkdown(diaryData) {
-      const today = new Date().toISOString().split('T')[0];
-      const tags = diaryData.tags.map(tag => tag.startsWith('#') ? tag : '#' + tag);
-
-      return `---
-title: "${diaryData.title}"
-date: ${today}
-tags: [${tags.join(', ')}]
-image_prompt: "${diaryData.image_prompt}"
----
-
-# ${diaryData.title}
-
-## 📅 ${today}
-
-### 📖 サマリー
-
-${diaryData.summary}
-
----
-
-${diaryData.body}
-
----
-
-**Tags:** ${tags.join(' ')}
-`;
-    }
-
-    // === GitHub API Push関数 ===
-    async function pushToGitHub(token, filePath, content, commitMessage) {
-      const owner = 'Tanbe3170';
-      const repo = 'my-voice-diary';
-      const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`;
-
-      // 既存ファイルのSHA取得（上書き時に必要）
-      let sha;
-      try {
-        const getResponse = await fetch(apiUrl, {
-          headers: {
-            'Authorization': `token ${token}`,
-            'Accept': 'application/vnd.github.v3+json'
-          }
-        });
-        if (getResponse.ok) {
-          const data = await getResponse.json();
-          sha = data.sha;
-        }
-      } catch (e) {
-        // ファイルが存在しない場合はsha不要
-      }
-
-      // Base64エンコード
-      const contentBase64 = btoa(unescape(encodeURIComponent(content)));
-
-      const body = {
-        message: `diary: ${new Date().toISOString().split('T')[0]} - ${commitMessage}`,
-        content: contentBase64,
-        branch: 'main'
-      };
-
-      if (sha) {
-        body.sha = sha; // 既存ファイル上書き
-      }
-
-      const response = await fetch(apiUrl, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `token ${token}`,
-          'Accept': 'application/vnd.github.v3+json',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body)
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`GitHub API エラー: ${error.message}`);
-      }
-
-      return await response.json();
-    }
-
     // === セキュリティ: ページ終了時にトークンを自動削除 ===
     window.addEventListener('beforeunload', () => {
-      sessionStorage.removeItem('github_token');
-      sessionStorage.removeItem('claude_api_key');
+      sessionStorage.removeItem('auth_token');
     });
   </script>
 </body>
