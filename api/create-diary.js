@@ -16,14 +16,27 @@ export default async function handler(req, res) {
   // 1. CORS設定（ブラウザからのクロスオリジンリクエストを許可）
   // ===================================================================
 
-  // セキュリティ強化: GitHub Pagesドメインのみ許可（ホワイトリスト方式）
-  const allowedOrigin = 'https://tanbe3170.github.io';
+  // セキュリティ強化: Vercelドメインのみ許可（ホワイトリスト方式）
+  // Phase 2.5ではVercelに全面移行するため、Vercelドメインからのリクエストを許可
+  const allowedOrigins = [
+    'https://tanbe3170.github.io', // GitHub Pages（後方互換）
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null // Vercel本番
+  ].filter(Boolean);
+
   const origin = req.headers.origin;
+
+  // セキュリティ強化: 非許可Originを明示的に拒否（403 Forbidden）
+  // ブラウザ制約外のクライアント（curl、Postmanなど）からのアクセスを防ぐ
+  if (req.method !== 'OPTIONS' && origin && !allowedOrigins.includes(origin)) {
+    return res.status(403).json({
+      error: 'アクセスが拒否されました。'
+    });
+  }
 
   // リクエストのOriginヘッダーが許可されたドメインと一致する場合のみ、
   // Access-Control-Allow-Originヘッダーを設定
-  if (origin === allowedOrigin) {
-    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
     // Vary: Originヘッダーでキャッシュポイズニング攻撃を防ぐ
     res.setHeader('Vary', 'Origin');
   }
@@ -39,6 +52,12 @@ export default async function handler(req, res) {
   // OPTIONSリクエスト（プリフライト）への対応
   // ブラウザがCORSリクエストの前に送信する事前確認リクエスト
   if (req.method === 'OPTIONS') {
+    // プリフライトリクエストでも許可Originを検証
+    if (origin && !allowedOrigins.includes(origin)) {
+      return res.status(403).json({
+        error: 'アクセスが拒否されました。'
+      });
+    }
     res.status(200).end();
     return;
   }
