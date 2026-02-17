@@ -5,11 +5,20 @@
 // Claude APIで整形してGitHubに保存するサーバーレス関数です。
 //
 // セキュリティ機能:
-// 1. CORS設定（GitHub Pagesドメインのみ許可）
+// 1. CORS設定（Vercelドメインのみ許可、Origin必須化）
 // 2. トークン認証（X-Auth-Tokenヘッダー）
-// 3. レート制限（基本構造、Vercel KV必要）
+// 3. 簡易レート制限（インメモリ、60req/時）
+//    ⚠️ 注意: Serverless環境では完全な制限不可。本番運用はVercel KV推奨。
 // 4. 入力検証（最大10,000文字、Content-Type検証）
-// 5. エラーハンドリング（汎用エラーのみ返却）
+// 5. LLM出力スキーマ検証（型・長さ検証、YAMLエスケープ）
+// 6. エラーハンドリング（汎用エラーのみ返却）
+//
+// TODO: 本番運用前の推奨改善
+// - 共有固定AUTH_TOKENをJWT/期限付き署名トークンに移行
+// - Vercel KVで永続的なレート制限を実装
+
+// 簡易レート制限用インメモリストア（Serverless環境では各インスタンス独立）
+const rateLimitStore = new Map();
 
 export default async function handler(req, res) {
   // ===================================================================
@@ -17,19 +26,24 @@ export default async function handler(req, res) {
   // ===================================================================
 
   // セキュリティ強化: Vercelドメインのみ許可（ホワイトリスト方式）
-  // Phase 2.5ではVercelに全面移行するため、Vercelドメインからのリクエストを許可
+  // Phase 2.5完全移行: GitHub Pagesは廃止、Vercelのみ許可
   const allowedOrigins = [
-    'https://tanbe3170.github.io', // GitHub Pages（後方互換）
     process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null // Vercel本番
   ].filter(Boolean);
 
   const origin = req.headers.origin;
 
+  // セキュリティ強化: Origin必須化（curl、Postmanなどブラウザ以外を拒否）
+  if (req.method !== 'OPTIONS' && !origin) {
+    return res.status(403).json({
+      error: 'アクセスが拒否されました。ブラウザからアクセスしてください。'
+    });
+  }
+
   // セキュリティ強化: 非許可Originを明示的に拒否（403 Forbidden）
-  // ブラウザ制約外のクライアント（curl、Postmanなど）からのアクセスを防ぐ
   if (req.method !== 'OPTIONS' && origin && !allowedOrigins.includes(origin)) {
     return res.status(403).json({
-      error: 'アクセスが拒否されました。'
+      error: 'アクセスが拒否されました。許可されたドメインからアクセスしてください。'
     });
   }
 
@@ -102,32 +116,52 @@ export default async function handler(req, res) {
     }
 
     // ===================================================================
-    // 5. レート制限（基本構造）
+    // 5. 簡易レート制限（IPアドレスベース、60req/時）
     // ===================================================================
+    //
+    // ⚠️ 注意: この実装はインメモリMapを使用しているため、Serverless環境では
+    // 各インスタンスで独立して動作し、完全な制限にはなりません。
+    // 本番運用ではVercel KVを使用した永続的なレート制限を推奨します。
 
-    // TODO: Vercel KVストアをセットアップ後に以下のコードを有効化
-    //
-    // IPアドレスベースのレート制限（60req/時）
-    //
-    // const clientIP = req.headers['x-forwarded-for']?.split(',')[0].trim() ||
-    //                  req.socket.remoteAddress;
-    //
-    // Vercel KVストアを使用してリクエスト数をカウント
-    // const kv = await import('@vercel/kv');
-    // const rateLimitKey = `rate_limit:${clientIP}`;
-    // const requestCount = await kv.incr(rateLimitKey);
-    //
-    // 初回リクエストの場合、1時間の有効期限を設定
-    // if (requestCount === 1) {
-    //   await kv.expire(rateLimitKey, 3600); // 3600秒 = 1時間
-    // }
-    //
-    // リクエスト数が60を超えた場合は429エラーを返す
-    // if (requestCount > 60) {
-    //   return res.status(429).json({
-    //     error: 'リクエスト数が制限を超えました。しばらくしてから再度お試しください。'
-    //   });
-    // }
+    const clientIP = req.headers['x-forwarded-for']?.split(',')[0].trim() ||
+                     req.socket?.remoteAddress || 'unknown';
+
+    const rateLimitKey = `rate_limit:${clientIP}`;
+    const now = Date.now();
+    const oneHour = 60 * 60 * 1000; // 1時間（ミリ秒）
+
+    // 既存のレコード取得
+    const record = rateLimitStore.get(rateLimitKey);
+
+    if (record) {
+      // レコードが1時間以内の場合
+      if (now - record.timestamp < oneHour) {
+        record.count += 1;
+
+        // 60回を超えた場合は429エラー
+        if (record.count > 60) {
+          return res.status(429).json({
+            error: 'リクエスト数が制限を超えました。しばらくしてから再度お試しください。'
+          });
+        }
+      } else {
+        // 1時間経過していればリセット
+        record.count = 1;
+        record.timestamp = now;
+      }
+    } else {
+      // 初回リクエスト
+      rateLimitStore.set(rateLimitKey, { count: 1, timestamp: now });
+    }
+
+    // 古いレコードを定期的にクリーンアップ（メモリリーク防止）
+    if (rateLimitStore.size > 1000) {
+      for (const [key, value] of rateLimitStore.entries()) {
+        if (now - value.timestamp > oneHour) {
+          rateLimitStore.delete(key);
+        }
+      }
+    }
 
     // ===================================================================
     // 6. 入力検証
@@ -270,7 +304,73 @@ ${rawText}
     const diaryData = JSON.parse(jsonMatch[1]);
 
     // ===================================================================
-    // 9. Markdownファイル生成
+    // 9. LLM出力のスキーマ検証（セキュリティ強化）
+    // ===================================================================
+
+    // 必須フィールドの存在と型を検証
+    const validateDiaryData = (data) => {
+      const errors = [];
+
+      // title検証（string、1-50文字）
+      if (!data.title || typeof data.title !== 'string') {
+        errors.push('titleが不正です');
+      } else if (data.title.length > 50) {
+        errors.push('titleが長すぎます（50文字以内）');
+      }
+
+      // summary検証（string、1-500文字）
+      if (!data.summary || typeof data.summary !== 'string') {
+        errors.push('summaryが不正です');
+      } else if (data.summary.length > 500) {
+        errors.push('summaryが長すぎます（500文字以内）');
+      }
+
+      // body検証（string、1-10000文字）
+      if (!data.body || typeof data.body !== 'string') {
+        errors.push('bodyが不正です');
+      } else if (data.body.length > 10000) {
+        errors.push('bodyが長すぎます（10000文字以内）');
+      }
+
+      // tags検証（配列、各要素string、最大10個）
+      if (!Array.isArray(data.tags)) {
+        errors.push('tagsが配列ではありません');
+      } else if (data.tags.length > 10) {
+        errors.push('tagsが多すぎます（10個以内）');
+      } else if (!data.tags.every(tag => typeof tag === 'string' && tag.length <= 30)) {
+        errors.push('tagsの要素が不正です（各30文字以内のstring）');
+      }
+
+      // image_prompt検証（string、1-500文字）
+      if (!data.image_prompt || typeof data.image_prompt !== 'string') {
+        errors.push('image_promptが不正です');
+      } else if (data.image_prompt.length > 500) {
+        errors.push('image_promptが長すぎます（500文字以内）');
+      }
+
+      return errors;
+    };
+
+    // スキーマ検証実行
+    const validationErrors = validateDiaryData(diaryData);
+    if (validationErrors.length > 0) {
+      console.error('LLM出力スキーマ検証エラー:', validationErrors, diaryData);
+      throw new Error('日記データの形式が不正です。');
+    }
+
+    // YAML frontmatter用のエスケープ処理
+    const escapeYaml = (str) => {
+      // ダブルクォート内の特殊文字をエスケープ
+      return str
+        .replace(/\\/g, '\\\\')  // バックスラッシュ
+        .replace(/"/g, '\\"')    // ダブルクォート
+        .replace(/\n/g, '\\n')   // 改行
+        .replace(/\r/g, '\\r')   // キャリッジリターン
+        .replace(/\t/g, '\\t');  // タブ
+    };
+
+    // ===================================================================
+    // 10. Markdownファイル生成
     // ===================================================================
 
     // 今日の日付をISO形式で取得（YYYY-MM-DD）
@@ -281,12 +381,17 @@ ${rawText}
     // ハッシュタグの整形（#が付いていない場合は追加）
     const tags = diaryData.tags.map(tag => tag.startsWith('#') ? tag : '#' + tag);
 
+    // YAML frontmatter用にエスケープ処理を適用
+    const escapedTitle = escapeYaml(diaryData.title);
+    const escapedImagePrompt = escapeYaml(diaryData.image_prompt);
+    const escapedTags = tags.map(tag => escapeYaml(tag));
+
     // Markdown形式で日記ファイルを生成
     const markdown = `---
-title: "${diaryData.title}"
+title: "${escapedTitle}"
 date: ${todayISO}
-tags: [${tags.join(', ')}]
-image_prompt: "${diaryData.image_prompt}"
+tags: [${escapedTags.join(', ')}]
+image_prompt: "${escapedImagePrompt}"
 ---
 
 # ${diaryData.title}
