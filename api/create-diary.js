@@ -387,10 +387,11 @@ ${rawText}
     const escapedTags = tags.map(tag => escapeYaml(tag));
 
     // Markdown形式で日記ファイルを生成
+    // 注意: tags要素は必ずクォートする（#記号がYAMLコメントと解釈されるのを防ぐ）
     const markdown = `---
 title: "${escapedTitle}"
 date: ${todayISO}
-tags: [${escapedTags.join(', ')}]
+tags: [${escapedTags.map(t => `"${t}"`).join(', ')}]
 image_prompt: "${escapedImagePrompt}"
 ---
 
