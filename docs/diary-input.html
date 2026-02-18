@@ -211,9 +211,83 @@
         const githubLink = document.createElement('a');
         githubLink.href = result.githubUrl;
         githubLink.target = '_blank';
+        githubLink.rel = 'noopener noreferrer';
         githubLink.textContent = '📂 GitHubで確認';
         linkP.appendChild(githubLink);
         successDiv.appendChild(linkP);
+
+        // Phase 4: 画像生成ボタン（imageTokenがある場合のみ表示）
+        if (result.imageToken && result.date) {
+          const imageSection = document.createElement('div');
+          imageSection.className = 'image-generate-section';
+
+          const costNotice = document.createElement('p');
+          costNotice.className = 'cost-notice';
+          costNotice.textContent = 'DALL-E 3で日記のイメージ画像を生成できます（$0.04/枚）';
+          imageSection.appendChild(costNotice);
+
+          const imageBtn = document.createElement('button');
+          imageBtn.className = 'image-generate-btn';
+          imageBtn.textContent = '🎨 画像を生成する';
+          imageBtn.onclick = async () => {
+            imageBtn.disabled = true;
+            imageBtn.textContent = '🎨 画像を生成中...';
+
+            try {
+              const imgResponse = await fetch('/api/generate-image', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  date: result.date,
+                  imageToken: result.imageToken
+                })
+              });
+
+              if (!imgResponse.ok) {
+                const imgError = await imgResponse.json();
+                throw new Error(imgError.error || '画像の生成に失敗しました。');
+              }
+
+              const imgResult = await imgResponse.json();
+
+              // 画像プレビュー表示（XSS対策: DOM構築パターン）
+              const previewDiv = document.createElement('div');
+              previewDiv.className = 'image-preview';
+
+              const previewH4 = document.createElement('h4');
+              previewH4.textContent = '生成された画像';
+              previewDiv.appendChild(previewH4);
+
+              const previewImg = document.createElement('img');
+              previewImg.src = imgResult.imageUrl;
+              previewImg.alt = '日記のイメージ画像';
+              previewDiv.appendChild(previewImg);
+
+              const imgLinkP = document.createElement('p');
+              const imgLink = document.createElement('a');
+              imgLink.href = imgResult.githubUrl;
+              imgLink.target = '_blank';
+              imgLink.rel = 'noopener noreferrer';
+              imgLink.textContent = '📂 GitHubで画像を確認';
+              imgLinkP.appendChild(imgLink);
+              previewDiv.appendChild(imgLinkP);
+
+              imageSection.replaceChild(previewDiv, imageBtn);
+              costNotice.textContent = '画像が正常に生成・保存されました！';
+
+            } catch (imgError) {
+              imageBtn.disabled = false;
+              imageBtn.textContent = '🎨 画像を生成する';
+
+              const imgErrorP = document.createElement('p');
+              imgErrorP.className = 'image-error';
+              imgErrorP.textContent = imgError.message;
+              imageSection.appendChild(imgErrorP);
+            }
+          };
+          imageSection.appendChild(imageBtn);
+          successDiv.appendChild(imageSection);
+        }
 
         const backBtn = document.createElement('button');
         backBtn.textContent = '📖 日記一覧に戻る';

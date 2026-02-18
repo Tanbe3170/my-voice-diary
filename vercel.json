@@ -5,5 +5,10 @@
       "source": "/api/:path*",
       "destination": "/api/:path*"
     }
-  ]
+  ],
+  "functions": {
+    "api/generate-image.js": {
+      "maxDuration": 30
+    }
+  }
 }

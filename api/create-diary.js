@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+
 // api/create-diary.js
 // Vercel Serverless Function - 日記作成API（Phase 2.5セキュリティ強化版）
 //
@@ -479,12 +481,25 @@ ${diaryData.body}
     // 11. 成功レスポンスを返す
     // ===================================================================
 
+    // 画像生成用のHMAC署名付きトークンを生成（Phase 4）
+    const IMAGE_TOKEN_SECRET = process.env.IMAGE_TOKEN_SECRET;
+    let imageToken = null;
+    if (IMAGE_TOKEN_SECRET) {
+      const timestamp = Date.now();
+      const payload = `${todayISO}:${timestamp}`;
+      const hmac = crypto.createHmac('sha256', IMAGE_TOKEN_SECRET)
+        .update(payload).digest('hex');
+      imageToken = `${timestamp}:${hmac}`;
+    }
+
     return res.status(200).json({
       success: true,
       title: diaryData.title,
       tags: diaryData.tags,
       filePath,
-      githubUrl: `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/blob/main/${filePath}`
+      githubUrl: `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/blob/main/${filePath}`,
+      date: todayISO,
+      imageToken
     });
 
   } catch (error) {

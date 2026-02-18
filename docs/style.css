@@ -172,6 +172,61 @@ progress {
   border-radius: 4px;
 }
 
+/* === 画像生成関連（Phase 4） === */
+.image-generate-section {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.image-generate-btn {
+  background-color: #8B5CF6;
+  color: white;
+  width: 100%;
+  font-size: 1.1rem;
+  padding: 0.75rem 1.5rem;
+}
+
+.image-generate-btn:hover:not(:disabled) {
+  background-color: #7C3AED;
+}
+
+.image-generate-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.cost-notice {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.image-preview {
+  margin-top: 1rem;
+}
+
+.image-preview h4 {
+  margin-bottom: 0.5rem;
+}
+
+.image-preview img {
+  width: 100%;
+  max-width: 512px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.image-preview p {
+  margin-top: 0.5rem;
+}
+
+.image-error {
+  color: var(--error);
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+}
+
 /* === レスポンシブ === */
 @media (max-width: 640px) {
   header h1 {
