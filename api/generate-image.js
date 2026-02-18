@@ -19,7 +19,8 @@ export default async function handler(req, res) {
   // ===================================================================
 
   const allowedOrigins = [
-    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null
+    process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : null, // プロダクションドメイン
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null // デプロイ固有URL
   ].filter(Boolean);
 
   const origin = req.headers.origin;

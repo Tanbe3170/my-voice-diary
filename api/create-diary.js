@@ -30,7 +30,8 @@ export default async function handler(req, res) {
   // セキュリティ強化: Vercelドメインのみ許可（ホワイトリスト方式）
   // Phase 2.5完全移行: GitHub Pagesは廃止、Vercelのみ許可
   const allowedOrigins = [
-    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null // Vercel本番
+    process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : null, // プロダクションドメイン
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null // デプロイ固有URL
   ].filter(Boolean);
 
   const origin = req.headers.origin;
