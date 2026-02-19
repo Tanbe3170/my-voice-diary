@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { handleCors } from './lib/cors.js';
 
 // api/create-diary.js
 // Vercel Serverless Function - 日記作成API（Phase 2.5セキュリティ強化版）
@@ -7,7 +8,7 @@ import crypto from 'crypto';
 // Claude APIで整形してGitHubに保存するサーバーレス関数です。
 //
 // セキュリティ機能:
-// 1. CORS設定（Vercelドメインのみ許可、Origin必須化）
+// 1. CORS設定（共通ヘルパー: api/lib/cors.js）
 // 2. トークン認証（X-Auth-Tokenヘッダー）
 // 3. 簡易レート制限（インメモリ、60req/時）
 //    ⚠️ 注意: Serverless環境では完全な制限不可。本番運用はVercel KV推奨。
@@ -24,58 +25,10 @@ const rateLimitStore = new Map();
 
 export default async function handler(req, res) {
   // ===================================================================
-  // 1. CORS設定（ブラウザからのクロスオリジンリクエストを許可）
+  // 1. CORS設定（共通ヘルパー使用）
   // ===================================================================
 
-  // セキュリティ強化: Vercelドメインのみ許可（ホワイトリスト方式）
-  // Phase 2.5完全移行: GitHub Pagesは廃止、Vercelのみ許可
-  const allowedOrigins = [
-    process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : null, // プロダクションドメイン
-    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null // デプロイ固有URL
-  ].filter(Boolean);
-
-  const origin = req.headers.origin;
-
-  // セキュリティ強化: Origin必須化（curl、Postmanなどブラウザ以外を拒否）
-  if (req.method !== 'OPTIONS' && !origin) {
-    return res.status(403).json({
-      error: 'アクセスが拒否されました。ブラウザからアクセスしてください。'
-    });
-  }
-
-  // セキュリティ強化: 非許可Originを明示的に拒否（403 Forbidden）
-  if (req.method !== 'OPTIONS' && origin && !allowedOrigins.includes(origin)) {
-    return res.status(403).json({
-      error: 'アクセスが拒否されました。許可されたドメインからアクセスしてください。'
-    });
-  }
-
-  // リクエストのOriginヘッダーが許可されたドメインと一致する場合のみ、
-  // Access-Control-Allow-Originヘッダーを設定
-  if (origin && allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    // Vary: Originヘッダーでキャッシュポイズニング攻撃を防ぐ
-    res.setHeader('Vary', 'Origin');
-  }
-
-  // 許可するHTTPメソッド（POST: データ送信、OPTIONS: プリフライトリクエスト）
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-
-  // 許可するリクエストヘッダー
-  // - Content-Type: リクエストボディの形式指定
-  // - X-Auth-Token: 認証トークン
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Auth-Token');
-
-  // OPTIONSリクエスト（プリフライト）への対応
-  // ブラウザがCORSリクエストの前に送信する事前確認リクエスト
-  if (req.method === 'OPTIONS') {
-    // プリフライトリクエストでも許可Originを検証
-    if (origin && !allowedOrigins.includes(origin)) {
-      return res.status(403).json({
-        error: 'アクセスが拒否されました。'
-      });
-    }
-    res.status(200).end();
+  if (handleCors(req, res, { allowHeaders: 'Content-Type, X-Auth-Token' })) {
     return;
   }
 

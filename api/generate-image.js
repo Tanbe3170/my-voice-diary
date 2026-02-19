@@ -4,7 +4,7 @@
 // 日記作成後にDALL-E 3で画像を生成し、GitHubリポジトリに保存する。
 //
 // セキュリティ機能:
-// 1. CORS設定（create-diary.jsと同一パターン）
+// 1. CORS設定（共通ヘルパー: api/lib/cors.js）
 // 2. HMAC署名付きトークン認証（IMAGE_TOKEN_SECRET、AUTH_TOKENは使用しない）
 // 3. Upstash Redis永続レート制限（10req/日、IPベース）
 // 4. 入力検証（date: YYYY-MM-DD、imagePromptはサーバー側取得）
@@ -12,44 +12,14 @@
 
 import crypto from 'crypto';
 import { isIP } from 'net';
+import { handleCors } from './lib/cors.js';
 
 export default async function handler(req, res) {
   // ===================================================================
-  // 1. CORS設定（create-diary.jsと同一パターン）
+  // 1. CORS設定（共通ヘルパー使用）
   // ===================================================================
 
-  const allowedOrigins = [
-    process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : null, // プロダクションドメイン
-    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null // デプロイ固有URL
-  ].filter(Boolean);
-
-  const origin = req.headers.origin;
-
-  if (req.method !== 'OPTIONS' && !origin) {
-    return res.status(403).json({
-      error: 'アクセスが拒否されました。ブラウザからアクセスしてください。'
-    });
-  }
-
-  if (req.method !== 'OPTIONS' && origin && !allowedOrigins.includes(origin)) {
-    return res.status(403).json({
-      error: 'アクセスが拒否されました。許可されたドメインからアクセスしてください。'
-    });
-  }
-
-  if (origin && allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Vary', 'Origin');
-  }
-
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') {
-    if (origin && !allowedOrigins.includes(origin)) {
-      return res.status(403).json({ error: 'アクセスが拒否されました。' });
-    }
-    res.status(200).end();
+  if (handleCors(req, res)) {
     return;
   }
 
@@ -168,17 +138,49 @@ export default async function handler(req, res) {
     const todayISO = new Date().toISOString().split('T')[0];
     const key = `img_rate:${clientIP}:${todayISO}`;
 
-    const countRes = await fetch(`${UPSTASH_URL}/incr/${encodeURIComponent(key)}`, {
-      headers: { 'Authorization': `Bearer ${UPSTASH_TOKEN}` }
-    });
-    const countData = await countRes.json();
-    const count = countData.result;
+    // fail-closed: Redis障害時は課金処理に進まず500エラーを返す
+    let count;
+    try {
+      const countRes = await fetch(`${UPSTASH_URL}/incr/${encodeURIComponent(key)}`, {
+        headers: { 'Authorization': `Bearer ${UPSTASH_TOKEN}` }
+      });
+
+      if (!countRes.ok) {
+        console.error('Upstash incr HTTPエラー:', countRes.status);
+        return res.status(500).json({
+          error: 'サーバーの一時的なエラーです。しばらくしてから再度お試しください。'
+        });
+      }
+
+      const countData = await countRes.json();
+      count = countData.result;
+
+      // レスポンス値の型検証（INCRは必ず1以上の整数を返す）
+      if (!Number.isInteger(count) || count < 1) {
+        console.error('Upstash incr不正レスポンス:', countData);
+        return res.status(500).json({
+          error: 'サーバーの一時的なエラーです。しばらくしてから再度お試しください。'
+        });
+      }
+    } catch (redisError) {
+      console.error('Upstash接続エラー:', redisError);
+      return res.status(500).json({
+        error: 'サーバーの一時的なエラーです。しばらくしてから再度お試しください。'
+      });
+    }
 
     if (count === 1) {
       // 初回: TTL設定（24時間）
-      await fetch(`${UPSTASH_URL}/expire/${encodeURIComponent(key)}/86400`, {
-        headers: { 'Authorization': `Bearer ${UPSTASH_TOKEN}` }
-      });
+      try {
+        const expireRes = await fetch(`${UPSTASH_URL}/expire/${encodeURIComponent(key)}/86400`, {
+          headers: { 'Authorization': `Bearer ${UPSTASH_TOKEN}` }
+        });
+        if (!expireRes.ok) {
+          console.error('Upstash expire HTTPエラー:', expireRes.status);
+        }
+      } catch (expireError) {
+        console.error('Upstash expire接続エラー:', expireError);
+      }
     }
 
     if (count > 10) {
@@ -309,7 +311,8 @@ export default async function handler(req, res) {
     // 10. 成功レスポンス
     // ===================================================================
 
-    const imageUrl = `https://${GITHUB_OWNER}.github.io/${GITHUB_REPO}/images/${date}.png`;
+    // GitHub raw content URLで画像を配信（publicリポジトリ、GitHub Pages非依存）
+    const imageUrl = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/${imagePath}`;
 
     return res.status(200).json({
       success: true,

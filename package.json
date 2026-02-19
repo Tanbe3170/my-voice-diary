@@ -1,0 +1,27 @@
+{
+  "name": "diary",
+  "version": "1.0.0",
+  "description": "音声入力で書く毎日の日記システム",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Tanbe3170/my-voice-diary.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/Tanbe3170/my-voice-diary/issues"
+  },
+  "homepage": "https://github.com/Tanbe3170/my-voice-diary#readme",
+  "devDependencies": {
+    "vitest": "^4.0.18"
+  }
+}
