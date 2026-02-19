@@ -1,27 +1,21 @@
 import crypto from 'crypto';
+import { isIP } from 'net';
 import { handleCors } from './lib/cors.js';
+import { verifyJwt } from './lib/jwt.js';
 
 // api/create-diary.js
-// Vercel Serverless Function - 日記作成API（Phase 2.5セキュリティ強化版）
+// Vercel Serverless Function - 日記作成API
 //
 // このファイルは、ブラウザからの日記作成リクエストを受け取り、
 // Claude APIで整形してGitHubに保存するサーバーレス関数です。
 //
 // セキュリティ機能:
 // 1. CORS設定（共通ヘルパー: api/lib/cors.js）
-// 2. トークン認証（X-Auth-Tokenヘッダー）
-// 3. 簡易レート制限（インメモリ、60req/時）
-//    ⚠️ 注意: Serverless環境では完全な制限不可。本番運用はVercel KV推奨。
+// 2. JWT認証（X-Auth-Tokenヘッダー） + AUTH_TOKENフォールバック（移行期間）
+// 3. Upstash Redis永続レート制限（30req/日、IPベース、fail-closed）
 // 4. 入力検証（最大10,000文字、Content-Type検証）
 // 5. LLM出力スキーマ検証（型・長さ検証、YAMLエスケープ）
 // 6. エラーハンドリング（汎用エラーのみ返却）
-//
-// TODO: 本番運用前の推奨改善
-// - 共有固定AUTH_TOKENをJWT/期限付き署名トークンに移行
-// - Vercel KVで永続的なレート制限を実装
-
-// 簡易レート制限用インメモリストア（Serverless環境では各インスタンス独立）
-const rateLimitStore = new Map();
 
 export default async function handler(req, res) {
   // ===================================================================
@@ -55,68 +49,151 @@ export default async function handler(req, res) {
     }
 
     // ===================================================================
-    // 4. 認証トークン検証（X-Auth-Tokenヘッダー）
+    // 4. JWT認証（AUTH_TOKENフォールバック付き移行期間）
     // ===================================================================
 
-    // リクエストヘッダーから認証トークンを取得
     const authToken = req.headers['x-auth-token'];
+    const JWT_SECRET = process.env.JWT_SECRET;
+    const LEGACY_AUTH_TOKEN = process.env.AUTH_TOKEN;
 
-    // 環境変数から期待されるトークンを取得
-    const expectedToken = process.env.AUTH_TOKEN;
-
-    // トークンが存在しない、または一致しない場合は401エラーを返す
-    if (!authToken || authToken !== expectedToken) {
-      return res.status(401).json({
-        error: '認証に失敗しました。アクセスが拒否されました。'
+    if (!JWT_SECRET) {
+      console.error('JWT_SECRET環境変数が未設定');
+      return res.status(500).json({
+        error: 'サーバーの設定に問題があります。管理者に連絡してください。'
       });
     }
 
-    // ===================================================================
-    // 5. 簡易レート制限（IPアドレスベース、60req/時）
-    // ===================================================================
-    //
-    // ⚠️ 注意: この実装はインメモリMapを使用しているため、Serverless環境では
-    // 各インスタンスで独立して動作し、完全な制限にはなりません。
-    // 本番運用ではVercel KVを使用した永続的なレート制限を推奨します。
+    // JWT優先検証（sub === 'diary-admin' で用途拘束）
+    const jwtPayload = authToken ? verifyJwt(authToken, JWT_SECRET) : null;
+    const jwtValid = jwtPayload && jwtPayload.sub === 'diary-admin';
 
-    const clientIP = req.headers['x-forwarded-for']?.split(',')[0].trim() ||
-                     req.socket?.remoteAddress || 'unknown';
-
-    const rateLimitKey = `rate_limit:${clientIP}`;
-    const now = Date.now();
-    const oneHour = 60 * 60 * 1000; // 1時間（ミリ秒）
-
-    // 既存のレコード取得
-    const record = rateLimitStore.get(rateLimitKey);
-
-    if (record) {
-      // レコードが1時間以内の場合
-      if (now - record.timestamp < oneHour) {
-        record.count += 1;
-
-        // 60回を超えた場合は429エラー
-        if (record.count > 60) {
-          return res.status(429).json({
-            error: 'リクエスト数が制限を超えました。しばらくしてから再度お試しください。'
-          });
-        }
+    if (!jwtValid) {
+      // AUTH_TOKENフォールバック（移行期間）
+      if (LEGACY_AUTH_TOKEN && authToken === LEGACY_AUTH_TOKEN) {
+        console.warn('レガシー認証使用: AUTH_TOKENフォールバックで認証成功');
       } else {
-        // 1時間経過していればリセット
-        record.count = 1;
-        record.timestamp = now;
+        return res.status(401).json({
+          error: '認証に失敗しました。トークンが無効または期限切れです。'
+        });
       }
-    } else {
-      // 初回リクエスト
-      rateLimitStore.set(rateLimitKey, { count: 1, timestamp: now });
     }
 
-    // 古いレコードを定期的にクリーンアップ（メモリリーク防止）
-    if (rateLimitStore.size > 1000) {
-      for (const [key, value] of rateLimitStore.entries()) {
-        if (now - value.timestamp > oneHour) {
-          rateLimitStore.delete(key);
-        }
+    // ===================================================================
+    // 5. Upstash Redis永続レート制限（30req/日、IPベース、fail-closed）
+    // ===================================================================
+
+    const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL;
+    const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+    if (!UPSTASH_URL || !UPSTASH_TOKEN) {
+      console.error('Upstash環境変数が未設定');
+      return res.status(500).json({
+        error: 'サーバーの設定に問題があります。管理者に連絡してください。'
+      });
+    }
+
+    // IP取得の信頼境界: x-vercel-forwarded-forを最優先
+    const rawIP = (req.headers['x-vercel-forwarded-for']?.split(',')[0].trim() ||
+                   req.headers['x-forwarded-for']?.split(',')[0].trim() ||
+                   req.socket?.remoteAddress || '').replace(/^::ffff:/, '');
+    const clientIP = isIP(rawIP) !== 0 ? rawIP : 'unknown';
+
+    const rateDateISO = new Date().toISOString().split('T')[0];
+    const rateLimitKey = `diary_rate:${clientIP}:${rateDateISO}`;
+
+    // fail-closed: Redis障害時は処理に進まず500エラーを返す
+    let rateCount;
+    try {
+      const countRes = await fetch(`${UPSTASH_URL}/incr/${encodeURIComponent(rateLimitKey)}`, {
+        headers: { 'Authorization': `Bearer ${UPSTASH_TOKEN}` }
+      });
+
+      if (!countRes.ok) {
+        console.error('Upstash incr HTTPエラー:', countRes.status);
+        return res.status(500).json({
+          error: 'サーバーの一時的なエラーです。しばらくしてから再度お試しください。'
+        });
       }
+
+      const countData = await countRes.json();
+      rateCount = countData.result;
+
+      // レスポンス値の型検証（INCRは必ず1以上の整数を返す）
+      if (!Number.isInteger(rateCount) || rateCount < 1) {
+        console.error('Upstash incr不正レスポンス:', countData);
+        return res.status(500).json({
+          error: 'サーバーの一時的なエラーです。しばらくしてから再度お試しください。'
+        });
+      }
+    } catch (redisError) {
+      console.error('Upstash接続エラー:', redisError);
+      return res.status(500).json({
+        error: 'サーバーの一時的なエラーです。しばらくしてから再度お試しください。'
+      });
+    }
+
+    // 初回: TTL設定（86400秒 = 24時間）
+    // 初回: TTL設定（86400秒 = 24時間）、fail-closed
+    if (rateCount === 1) {
+      let ttlSet = false;
+      try {
+        const expireRes = await fetch(`${UPSTASH_URL}/expire/${encodeURIComponent(rateLimitKey)}/86400`, {
+          headers: { 'Authorization': `Bearer ${UPSTASH_TOKEN}` }
+        });
+        if (expireRes.ok) {
+          ttlSet = true;
+        } else {
+          console.error('Upstash expire HTTPエラー:', expireRes.status);
+          // TTL確認: ttl > 0 のみ「設定済み」として継続可
+          // ttl === -1（無期限）→ 再EXPIRE試行、ttl === -2（キー不在）/その他 → 失敗
+          try {
+            const ttlRes = await fetch(`${UPSTASH_URL}/ttl/${encodeURIComponent(rateLimitKey)}`, {
+              headers: { 'Authorization': `Bearer ${UPSTASH_TOKEN}` }
+            });
+            if (ttlRes.ok) {
+              const ttlData = await ttlRes.json();
+              const ttl = ttlData.result;
+              if (Number.isInteger(ttl) && ttl > 0) {
+                // TTLが正の値 → 既に設定済み、継続可
+                ttlSet = true;
+              } else if (ttl === -1) {
+                // 無期限キー → 再度EXPIRE試行
+                const retryRes = await fetch(`${UPSTASH_URL}/expire/${encodeURIComponent(rateLimitKey)}/86400`, {
+                  headers: { 'Authorization': `Bearer ${UPSTASH_TOKEN}` }
+                });
+                if (retryRes.ok) {
+                  ttlSet = true;
+                } else {
+                  console.error('Upstash expire再試行失敗:', retryRes.status);
+                }
+              } else {
+                // ttl === -2（キー不在）またはその他の異常値
+                console.error('Upstash TTL異常値:', ttl);
+              }
+            } else {
+              console.error('Upstash TTL確認HTTPエラー:', ttlRes.status);
+            }
+          } catch (ttlError) {
+            console.error('Upstash TTL確認エラー:', ttlError);
+          }
+        }
+      } catch (expireError) {
+        console.error('Upstash expire接続エラー:', expireError);
+      }
+
+      // TTL未設定のまま → fail-closed（無期限キー残留を防止）
+      if (!ttlSet) {
+        return res.status(500).json({
+          error: 'サーバーの一時的なエラーです。しばらくしてから再度お試しください。'
+        });
+      }
+    }
+
+    // 30回超過 → 429
+    if (rateCount > 30) {
+      return res.status(429).json({
+        error: '本日のリクエスト回数の上限（30回）に達しました。明日再度お試しください。'
+      });
     }
 
     // ===================================================================

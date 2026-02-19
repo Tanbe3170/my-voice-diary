@@ -307,4 +307,80 @@ describe('generate-image API', () => {
       expect(res._status).toBe(401);
     });
   });
+
+  // =================================================================
+  // テスト4: Base64プレビューレスポンス
+  // =================================================================
+  describe('Base64プレビューレスポンス', () => {
+    // 正常フローの共通fetchモック（小さい画像）
+    function createNormalFetchMock(imageData) {
+      return vi.fn(async (url) => {
+        if (url.includes('upstash') && url.includes('incr')) {
+          return { ok: true, json: async () => ({ result: 1 }) };
+        }
+        if (url.includes('upstash') && url.includes('expire')) {
+          return { ok: true, json: async () => ({ result: 1 }) };
+        }
+        if (url.includes('api.github.com') && url.includes('contents/diaries')) {
+          const content = Buffer.from(
+            '---\nimage_prompt: "A test image prompt"\n---\n# Test',
+            'utf-8'
+          ).toString('base64');
+          return { ok: true, json: async () => ({ content, sha: 'abc123' }) };
+        }
+        if (url.includes('api.openai.com')) {
+          return {
+            ok: true,
+            json: async () => ({ data: [{ b64_json: imageData }] }),
+          };
+        }
+        if (url.includes('api.github.com') && url.includes('contents/docs/images')) {
+          return { ok: true, json: async () => ({ content: {} }) };
+        }
+        return { ok: true, json: async () => ({}) };
+      });
+    }
+
+    it('2.5MB未満の画像でimageBase64フィールドが含まれること', async () => {
+      const smallBase64 = Buffer.from('small-fake-png').toString('base64');
+      globalThis.fetch = createNormalFetchMock(smallBase64);
+
+      const req = createMockReq();
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(200);
+      expect(res._json.imageBase64).toBe(smallBase64);
+      expect(res._json.imageUrl).toBeDefined();
+    });
+
+    it('2.5MB以上の画像でimageBase64が省略されキャッシュバスター付きURLになること', async () => {
+      // 2.5MB超のBase64文字列を生成
+      const largeBase64 = 'A'.repeat(2_500_001);
+      globalThis.fetch = createNormalFetchMock(largeBase64);
+
+      const req = createMockReq();
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(200);
+      expect(res._json.imageBase64).toBeUndefined();
+      // キャッシュバスター（?t=タイムスタンプ）が付与されていること
+      expect(res._json.imageUrl).toContain('?t=');
+    });
+
+    it('ちょうど2,500,000文字の画像でimageBase64が省略されること（境界値）', async () => {
+      // 実装: imageBase64.length < 2_500_000 → 等号はフォールバック側
+      const boundaryBase64 = 'A'.repeat(2_500_000);
+      globalThis.fetch = createNormalFetchMock(boundaryBase64);
+
+      const req = createMockReq();
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(200);
+      expect(res._json.imageBase64).toBeUndefined();
+      expect(res._json.imageUrl).toContain('?t=');
+    });
+  });
 });

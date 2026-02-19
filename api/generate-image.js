@@ -314,12 +314,24 @@ export default async function handler(req, res) {
     // GitHub raw content URLで画像を配信（publicリポジトリ、GitHub Pages非依存）
     const imageUrl = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/${imagePath}`;
 
-    return res.status(200).json({
+    // Base64プレビュー用データ（2.5MB未満ならレスポンスに含める）
+    // CDNキャッシュ（raw.githubusercontent.com）による古い画像表示を回避
+    const MAX_BASE64_SIZE = 2_500_000;
+    const responseBody = {
       success: true,
       imageUrl,
       imagePath,
       githubUrl: `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/blob/main/${imagePath}`
-    });
+    };
+
+    if (imageBase64.length < MAX_BASE64_SIZE) {
+      responseBody.imageBase64 = imageBase64;
+    } else {
+      // サイズ超過時: キャッシュバスター付きURLにフォールバック
+      responseBody.imageUrl = `${imageUrl}?t=${Date.now()}`;
+    }
+
+    return res.status(200).json(responseBody);
 
   } catch (error) {
     console.error('サーバーエラー:', error);

@@ -144,10 +144,10 @@
         return;
       }
 
-      // Phase 2.5: Vercel Functionへのリクエスト用AUTH_TOKEN
+      // 認証トークン（JWT）の取得
       let authToken = sessionStorage.getItem('auth_token');
       if (!authToken) {
-        authToken = prompt('認証トークンを入力してください:\n\n※ このトークンは管理者から提供されます。\n※ APIキーはサーバー側で安全に管理されています。');
+        authToken = prompt('認証トークン（JWT）を入力してください:\n\n※ このトークンは管理者から提供されます。\n※ トークンには有効期限があります。期限切れの場合は再取得してください。');
         if (!authToken) {
           alert('認証トークンが必要です。');
           return;
@@ -176,6 +176,10 @@
 
         if (!response.ok) {
           const errorData = await response.json();
+          // 401: トークン期限切れ→sessionStorageクリア→再入力を促す
+          if (response.status === 401) {
+            sessionStorage.removeItem('auth_token');
+          }
           throw new Error(errorData.error || '日記の作成に失敗しました。');
         }
 
@@ -259,7 +263,10 @@
               previewDiv.appendChild(previewH4);
 
               const previewImg = document.createElement('img');
-              previewImg.src = imgResult.imageUrl;
+              // Base64があればdata URLで即時表示（CDNキャッシュ回避）
+              previewImg.src = imgResult.imageBase64
+                ? `data:image/png;base64,${imgResult.imageBase64}`
+                : imgResult.imageUrl;
               previewImg.alt = '日記のイメージ画像';
               previewDiv.appendChild(previewImg);
 
