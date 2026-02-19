@@ -56,15 +56,8 @@ export default async function handler(req, res) {
     const JWT_SECRET = process.env.JWT_SECRET;
     const LEGACY_AUTH_TOKEN = process.env.AUTH_TOKEN;
 
-    if (!JWT_SECRET) {
-      console.error('JWT_SECRET環境変数が未設定');
-      return res.status(500).json({
-        error: 'サーバーの設定に問題があります。管理者に連絡してください。'
-      });
-    }
-
-    // JWT優先検証（sub === 'diary-admin' で用途拘束）
-    const jwtPayload = authToken ? verifyJwt(authToken, JWT_SECRET) : null;
+    // JWT優先検証（JWT_SECRET設定時のみ、sub === 'diary-admin' で用途拘束）
+    const jwtPayload = (authToken && JWT_SECRET) ? verifyJwt(authToken, JWT_SECRET) : null;
     const jwtValid = jwtPayload && jwtPayload.sub === 'diary-admin';
 
     if (!jwtValid) {
