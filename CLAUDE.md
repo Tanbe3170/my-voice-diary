@@ -26,13 +26,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Phase 2.5: Vercel移行 + セキュリティ強化（✅ 完了）
 - Phase 3: 高品質音声認識（📅 計画あり - plans/参照）
 - Phase 4: AI画像生成（✅ 完了 - DALL-E 3 + Vercel Serverless）
-- Phase 5: Instagram投稿（📅 未着手）
+- Phase 5: Instagram投稿（✅ 完了 - Instagram Graph API + 冪等性保証）
 
 **最新の変更（2026-02-19）:**
-- JWT認証移行（2段階: JWT優先 + AUTH_TOKENフォールバック）
-- Upstash Redis永続レート制限（create-diary.js / generate-image.js）
-- 画像プレビューBase64直接返却（CDNキャッシュ回避）
-- Codexレビュー完了（arch → parallel diff → cross-check: ok: true）
+- Phase 5: Instagram自動投稿API（post-instagram.js）
+- JWT認証（JWTのみ、AUTH_TOKENフォールバックなし）
+- 重複投稿防止（Redis SETNX/GET、冪等性保証）
+- 動的タイムアウト（25秒デッドライン、try/finallyロック解放保証）
+- フロントエンドInstagram投稿UI（diary-input.html）
+- トークンリフレッシュスクリプト（refresh-instagram-token.js）
 
 ---
 
@@ -55,13 +57,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### テスト実行
 
 ```bash
-# 全テスト実行（46テスト）
+# 全テスト実行（84テスト）
 npm test
 
 # 特定テストファイル
 npx vitest run tests/jwt.test.js
 npx vitest run tests/create-diary-ratelimit.test.js
 npx vitest run tests/generate-image.test.js
+npx vitest run tests/post-instagram.test.js
 ```
 
 ### JWT生成（管理者用）
@@ -131,9 +134,16 @@ python3 scripts/diary-summarize.py "今日の出来事をここに入力..."
   - GitHub APIで画像保存
   - Base64プレビュー返却（2.5MB閾値ガード）
   ↓
+[API] POST /api/post-instagram（任意）
+  - JWT認証（JWTのみ、AUTH_TOKENフォールバックなし）
+  - Upstash Redisレート制限（5req/日/IP）
+  - 重複投稿防止（Redis SETNX/GET、冪等性保証）
+  - Instagram Graph API（Container→Polling→Publish）
+  - 動的タイムアウト（25秒デッドライン）
+  ↓
 [閲覧] Vercel (docs/)
   - index.html: 日記一覧（GitHub API経由）
-  - diary-input.html: 音声入力 + 日記作成UI
+  - diary-input.html: 音声入力 + 日記作成 + Instagram投稿UI
 ```
 
 ### ディレクトリ構造
@@ -143,19 +153,22 @@ voice-diary/
 ├── api/                        # Vercel Serverless Functions
 │   ├── create-diary.js         # 日記作成API（Claude整形 + GitHub保存）
 │   ├── generate-image.js       # 画像生成API（DALL-E 3 + GitHub保存）
+│   ├── post-instagram.js       # Instagram投稿API（Graph API + 冪等性保証）
 │   └── lib/
 │       ├── cors.js             # CORS共通ユーティリティ
 │       └── jwt.js              # JWT署名・検証（HS256、外部依存ゼロ）
 │
 ├── scripts/                    # 管理・自動化スクリプト
 │   ├── generate-jwt.js         # 管理者用JWT生成CLI
+│   ├── refresh-instagram-token.js  # Instagramトークンリフレッシュ
 │   ├── diary-summarize.py      # Phase 1: Claude API日記整形
 │   └── diary-push.sh           # Phase 1: GitHub自動push
 │
 ├── tests/                      # テストスイート（vitest）
 │   ├── jwt.test.js             # JWT生成・検証テスト（23テスト）
 │   ├── create-diary-ratelimit.test.js  # レート制限テスト（12テスト）
-│   └── generate-image.test.js  # 画像生成APIテスト（11テスト）
+│   ├── generate-image.test.js  # 画像生成APIテスト（11テスト）
+│   └── post-instagram.test.js  # Instagram投稿APIテスト（31テスト）
 │
 ├── docs/                       # フロントエンド（Vercel静的配信）
 │   ├── index.html              # 日記一覧ページ
@@ -244,6 +257,7 @@ AUTH_TOKEN一致 → 認証OK + console.warn('レガシー認証使用')
 |-----|------|------|-----|
 | create-diary | `diary_rate:{IP}:{YYYY-MM-DD}` | 30req/日 | 86400秒 |
 | generate-image | `img_rate:{IP}:{YYYY-MM-DD}` | 10req/日 | 86400秒 |
+| post-instagram | `ig_rate:{IP}:{YYYY-MM-DD}` | 5req/日 | 86400秒 |
 
 **fail-closed原則:** Upstash障害時は課金処理（Claude/DALL-E）に進まず500を返す
 
@@ -280,6 +294,10 @@ AUTH_TOKEN一致 → 認証OK + console.warn('レガシー認証使用')
 | `IMAGE_TOKEN_SECRET` | 画像トークンHMACキー |
 | `UPSTASH_REDIS_REST_URL` | Upstash Redis REST URL |
 | `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis認証トークン |
+| `INSTAGRAM_ACCESS_TOKEN` | Instagram Graph API長期トークン（60日有効） |
+| `INSTAGRAM_BUSINESS_ACCOUNT_ID` | InstagramビジネスアカウントID |
+| `META_APP_ID` | MetaアプリID（トークンリフレッシュ用） |
+| `META_APP_SECRET` | Metaアプリシークレット（リフレッシュ用） |
 
 ### ローカル開発（レガシーCLI用）
 
@@ -328,7 +346,7 @@ export GITHUB_TOKEN="ghp_..."
 ---
 
 *最終更新: 2026年2月19日*
-*現在のフェーズ: Phase 4 完了（セキュリティ強化済み）*
+*現在のフェーズ: Phase 5 完了（Instagram投稿機能追加）*
 
 # Plan Creation
 

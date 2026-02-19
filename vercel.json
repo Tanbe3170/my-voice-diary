@@ -9,6 +9,9 @@
   "functions": {
     "api/generate-image.js": {
       "maxDuration": 30
+    },
+    "api/post-instagram.js": {
+      "maxDuration": 30
     }
   }
 }

@@ -282,6 +282,111 @@
               imageSection.replaceChild(previewDiv, imageBtn);
               costNotice.textContent = '画像が正常に生成・保存されました！';
 
+              // Phase 5: Instagram投稿セクション
+              const igSection = document.createElement('div');
+              igSection.className = 'instagram-section';
+
+              const igH4 = document.createElement('h4');
+              igH4.textContent = 'Instagramに投稿';
+              igSection.appendChild(igH4);
+
+              const igLabel = document.createElement('label');
+              igLabel.setAttribute('for', 'ig-caption');
+              igLabel.textContent = 'キャプション（編集可能）';
+              igSection.appendChild(igLabel);
+
+              const igCaption = document.createElement('textarea');
+              igCaption.id = 'ig-caption';
+              igCaption.rows = 6;
+              igCaption.maxLength = 2200;
+              // キャプション自動生成
+              const autoCaption = [
+                result.title || '',
+                '',
+                (result.tags || []).map(t => t.startsWith('#') ? t : '#' + t).join(' '),
+                '',
+                '#日記 #VoiceDiary #AI日記'
+              ].join('\n');
+              igCaption.value = autoCaption;
+              igSection.appendChild(igCaption);
+
+              const igCounter = document.createElement('span');
+              igCounter.className = 'ig-char-count';
+              igCounter.textContent = `${igCaption.value.length} / 2200`;
+              igSection.appendChild(igCounter);
+
+              igCaption.addEventListener('input', () => {
+                igCounter.textContent = `${igCaption.value.length} / 2200`;
+                if (igCaption.value.length > 2200) {
+                  igCounter.classList.add('over-limit');
+                } else {
+                  igCounter.classList.remove('over-limit');
+                }
+              });
+
+              const igPostBtn = document.createElement('button');
+              igPostBtn.className = 'ig-post-btn';
+              igPostBtn.textContent = '📸 Instagramに投稿';
+              igPostBtn.onclick = async () => {
+                if (!confirm('この内容でInstagramに投稿しますか？')) return;
+
+                igPostBtn.disabled = true;
+                igPostBtn.textContent = '📸 投稿中...';
+
+                try {
+                  const igResponse = await fetch('/api/post-instagram', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'X-Auth-Token': authToken
+                    },
+                    body: JSON.stringify({
+                      date: result.date,
+                      caption: igCaption.value || undefined
+                    })
+                  });
+
+                  const igData = await igResponse.json();
+
+                  if (!igResponse.ok) {
+                    throw new Error(igData.error || 'Instagram投稿に失敗しました。');
+                  }
+
+                  // 成功表示
+                  const igResultDiv = document.createElement('div');
+                  igResultDiv.className = 'ig-success';
+                  const igMsg = document.createElement('p');
+                  if (igData.alreadyPosted) {
+                    igMsg.textContent = '✅ この日記は既にInstagramに投稿済みです。';
+                  } else {
+                    igMsg.textContent = '✅ Instagramへの投稿が完了しました！';
+                  }
+                  igResultDiv.appendChild(igMsg);
+
+                  const igIdP = document.createElement('p');
+                  igIdP.textContent = `投稿ID: ${igData.postId}`;
+                  igResultDiv.appendChild(igIdP);
+
+                  // ボタンとキャプション入力を結果表示に置換
+                  igPostBtn.style.display = 'none';
+                  igCaption.disabled = true;
+                  igSection.appendChild(igResultDiv);
+
+                } catch (igErr) {
+                  igPostBtn.disabled = false;
+                  igPostBtn.textContent = '📸 Instagramに投稿';
+
+                  // 401: トークン期限切れの可能性
+                  const igErrP = document.createElement('p');
+                  igErrP.className = 'ig-error';
+                  igErrP.textContent = igErr.message;
+                  igSection.appendChild(igErrP);
+                }
+              };
+              igSection.appendChild(igPostBtn);
+
+              imageSection.appendChild(igSection);
+
             } catch (imgError) {
               imageBtn.disabled = false;
               imageBtn.textContent = '🎨 画像を生成する';
