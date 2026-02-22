@@ -18,6 +18,7 @@ env/
 .env.local
 *.key
 *.pem
+docs/VoicediarybotIG.txt
 
 # OS
 .DS_Store

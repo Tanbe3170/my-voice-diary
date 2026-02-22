@@ -316,12 +316,10 @@
               igSection.appendChild(igCounter);
 
               igCaption.addEventListener('input', () => {
+                const over = igCaption.value.length > 2200;
                 igCounter.textContent = `${igCaption.value.length} / 2200`;
-                if (igCaption.value.length > 2200) {
-                  igCounter.classList.add('over-limit');
-                } else {
-                  igCounter.classList.remove('over-limit');
-                }
+                igCounter.classList.toggle('over-limit', over);
+                igPostBtn.disabled = over;
               });
 
               const igPostBtn = document.createElement('button');
@@ -386,6 +384,207 @@
               igSection.appendChild(igPostBtn);
 
               imageSection.appendChild(igSection);
+
+              // Phase 5.5: Bluesky投稿セクション
+              const bsSection = document.createElement('div');
+              bsSection.className = 'bluesky-section';
+
+              const bsH4 = document.createElement('h4');
+              bsH4.textContent = 'Blueskyに投稿';
+              bsSection.appendChild(bsH4);
+
+              const bsLabel = document.createElement('label');
+              bsLabel.setAttribute('for', 'bs-text');
+              bsLabel.textContent = 'テキスト（編集可能）';
+              bsSection.appendChild(bsLabel);
+
+              const bsText = document.createElement('textarea');
+              bsText.id = 'bs-text';
+              bsText.rows = 4;
+              // 自動生成テキスト
+              const bsAutoText = [
+                result.title || '',
+                '',
+                (result.tags || []).map(t => t.startsWith('#') ? t : '#' + t).join(' ')
+              ].join('\n');
+              bsText.value = bsAutoText;
+              bsSection.appendChild(bsText);
+
+              const bsCounter = document.createElement('span');
+              bsCounter.className = 'bs-grapheme-count';
+              const countGraphemes = (str) => {
+                const segmenter = new Intl.Segmenter('ja', { granularity: 'grapheme' });
+                return [...segmenter.segment(str)].length;
+              };
+              const bsGraphemes = countGraphemes(bsText.value);
+              bsCounter.textContent = `${bsGraphemes} / 300 graphemes`;
+              if (bsGraphemes > 300) bsCounter.classList.add('over-limit');
+              bsSection.appendChild(bsCounter);
+
+              bsText.addEventListener('input', () => {
+                const g = countGraphemes(bsText.value);
+                const over = g > 300;
+                bsCounter.textContent = `${g} / 300 graphemes`;
+                bsCounter.classList.toggle('over-limit', over);
+                bsPostBtn.disabled = over;
+              });
+
+              const bsPostBtn = document.createElement('button');
+              bsPostBtn.className = 'bs-post-btn';
+              bsPostBtn.textContent = '\ud83e\udd8b Blueskyに投稿';
+              if (bsGraphemes > 300) bsPostBtn.disabled = true;
+              bsPostBtn.onclick = async () => {
+                if (!confirm('この内容でBlueskyに投稿しますか？')) return;
+
+                bsPostBtn.disabled = true;
+                bsPostBtn.textContent = '\ud83e\udd8b 投稿中...';
+
+                try {
+                  const bsResponse = await fetch('/api/post-bluesky', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'X-Auth-Token': authToken
+                    },
+                    body: JSON.stringify({
+                      date: result.date,
+                      text: bsText.value || undefined
+                    })
+                  });
+
+                  const bsData = await bsResponse.json();
+
+                  if (!bsResponse.ok) {
+                    throw new Error(bsData.error || 'Bluesky投稿に失敗しました。');
+                  }
+
+                  const bsResultDiv = document.createElement('div');
+                  bsResultDiv.className = 'bs-success';
+                  const bsMsg = document.createElement('p');
+                  if (bsData.alreadyPosted) {
+                    bsMsg.textContent = '\u2705 この日記は既にBlueskyに投稿済みです。';
+                  } else {
+                    bsMsg.textContent = '\u2705 Blueskyへの投稿が完了しました！';
+                  }
+                  bsResultDiv.appendChild(bsMsg);
+
+                  bsPostBtn.style.display = 'none';
+                  bsText.disabled = true;
+                  bsSection.appendChild(bsResultDiv);
+
+                } catch (bsErr) {
+                  bsPostBtn.disabled = false;
+                  bsPostBtn.textContent = '\ud83e\udd8b Blueskyに投稿';
+
+                  const bsErrP = document.createElement('p');
+                  bsErrP.className = 'bs-error';
+                  bsErrP.textContent = bsErr.message;
+                  bsSection.appendChild(bsErrP);
+                }
+              };
+              bsSection.appendChild(bsPostBtn);
+
+              imageSection.appendChild(bsSection);
+
+              // Phase 5.5: Threads投稿セクション
+              const thSection = document.createElement('div');
+              thSection.className = 'threads-section';
+
+              const thH4 = document.createElement('h4');
+              thH4.textContent = 'Threadsに投稿';
+              thSection.appendChild(thH4);
+
+              const thLabel = document.createElement('label');
+              thLabel.setAttribute('for', 'th-text');
+              thLabel.textContent = 'テキスト（編集可能）';
+              thSection.appendChild(thLabel);
+
+              const thText = document.createElement('textarea');
+              thText.id = 'th-text';
+              thText.rows = 4;
+              thText.maxLength = 500;
+              // 自動生成テキスト
+              const thAutoText = [
+                result.title || '',
+                '',
+                (result.tags || []).map(t => t.startsWith('#') ? t : '#' + t).join(' ')
+              ].join('\n');
+              thText.value = thAutoText;
+              thSection.appendChild(thText);
+
+              const thCounter = document.createElement('span');
+              thCounter.className = 'th-char-count';
+              thCounter.textContent = `${thText.value.length} / 500`;
+              if (thText.value.length > 500) thCounter.classList.add('over-limit');
+              thSection.appendChild(thCounter);
+
+              thText.addEventListener('input', () => {
+                const over = thText.value.length > 500;
+                thCounter.textContent = `${thText.value.length} / 500`;
+                thCounter.classList.toggle('over-limit', over);
+                thPostBtn.disabled = over;
+              });
+
+              const thPostBtn = document.createElement('button');
+              thPostBtn.className = 'th-post-btn';
+              thPostBtn.textContent = '\ud83e\uddf5 Threadsに投稿';
+              if (thText.value.length > 500) thPostBtn.disabled = true;
+              thPostBtn.onclick = async () => {
+                if (!confirm('この内容でThreadsに投稿しますか？')) return;
+
+                thPostBtn.disabled = true;
+                thPostBtn.textContent = '\ud83e\uddf5 投稿中...';
+
+                try {
+                  const thResponse = await fetch('/api/post-threads', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'X-Auth-Token': authToken
+                    },
+                    body: JSON.stringify({
+                      date: result.date,
+                      text: thText.value || undefined
+                    })
+                  });
+
+                  const thData = await thResponse.json();
+
+                  if (!thResponse.ok) {
+                    throw new Error(thData.error || 'Threads投稿に失敗しました。');
+                  }
+
+                  const thResultDiv = document.createElement('div');
+                  thResultDiv.className = 'th-success';
+                  const thMsg = document.createElement('p');
+                  if (thData.alreadyPosted) {
+                    thMsg.textContent = '\u2705 この日記は既にThreadsに投稿済みです。';
+                  } else {
+                    thMsg.textContent = '\u2705 Threadsへの投稿が完了しました！';
+                  }
+                  thResultDiv.appendChild(thMsg);
+
+                  const thIdP = document.createElement('p');
+                  thIdP.textContent = `投稿ID: ${thData.postId}`;
+                  thResultDiv.appendChild(thIdP);
+
+                  thPostBtn.style.display = 'none';
+                  thText.disabled = true;
+                  thSection.appendChild(thResultDiv);
+
+                } catch (thErr) {
+                  thPostBtn.disabled = false;
+                  thPostBtn.textContent = '\ud83e\uddf5 Threadsに投稿';
+
+                  const thErrP = document.createElement('p');
+                  thErrP.className = 'th-error';
+                  thErrP.textContent = thErr.message;
+                  thSection.appendChild(thErrP);
+                }
+              };
+              thSection.appendChild(thPostBtn);
+
+              imageSection.appendChild(thSection);
 
             } catch (imgError) {
               imageBtn.disabled = false;

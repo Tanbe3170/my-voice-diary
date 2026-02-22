@@ -12,6 +12,12 @@
     },
     "api/post-instagram.js": {
       "maxDuration": 30
+    },
+    "api/post-bluesky.js": {
+      "maxDuration": 30
+    },
+    "api/post-threads.js": {
+      "maxDuration": 30
     }
   }
 }
