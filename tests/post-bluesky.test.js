@@ -14,6 +14,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { signJwt } from '../api/lib/jwt.js';
 
+// sharpモック（PNG→JPEG変換をシミュレート）
+// _nextJpegSize / _nextResizeSize でテスト毎にサイズを制御可能
+const sharpMockState = { nextJpegSize: 500_000, nextResizeSize: 300_000 };
+
+vi.mock('sharp', () => ({
+  default: vi.fn((buffer) => ({
+    jpeg: vi.fn((opts) => ({
+      toBuffer: vi.fn(async () => Buffer.alloc(sharpMockState.nextJpegSize, 0xAA)),
+    })),
+    resize: vi.fn((w, h, fitOpts) => ({
+      jpeg: vi.fn((jpegOpts) => ({
+        toBuffer: vi.fn(async () => Buffer.alloc(sharpMockState.nextResizeSize, 0xBB)),
+      })),
+    })),
+  }),
+  ),
+}));
+
 // テスト用JWT生成ヘルパー
 const JWT_SECRET = 'test-jwt-secret-key-32bytes-long!';
 
@@ -240,6 +258,9 @@ describe('post-bluesky API', () => {
   beforeEach(async () => {
     Object.assign(process.env, baseEnv);
     originalFetch = globalThis.fetch;
+    // sharpモックのサイズをデフォルトにリセット
+    sharpMockState.nextJpegSize = 500_000;
+    sharpMockState.nextResizeSize = 300_000;
     vi.resetModules();
     const mod = await import('../api/post-bluesky.js');
     handler = mod.default;
@@ -619,16 +640,63 @@ describe('post-bluesky API', () => {
       expect(mockFetch._lockDeleted.value).toBe(true);
     });
 
-    it('画像1MB超過で400', async () => {
+    it('画像1MB超過時にJPEG変換で1MB以下になり投稿成功', async () => {
+      sharpMockState.nextJpegSize = 500_000; // JPEG変換で500KBに
       const largeImage = Buffer.alloc(1_100_000, 0xFF);
       const mockFetch = createFullFlowFetchMock({ imageBuffer: largeImage });
       globalThis.fetch = mockFetch;
       const req = createMockReq();
       const res = createMockRes();
       await handler(req, res);
+      expect(res._status).toBe(200);
+      expect(res._json.success).toBe(true);
+      const uploadCall = mockFetch.mock.calls.find(c => c[0].includes('uploadBlob'));
+      expect(uploadCall[1].headers['Content-Type']).toBe('image/jpeg');
+      expect(uploadCall[1].body.byteLength).toBeLessThanOrEqual(1_000_000);
+    });
+
+    it('JPEG変換後も1MB超過時にリサイズされて投稿成功', async () => {
+      sharpMockState.nextJpegSize = 1_200_000; // JPEG変換でもまだ1.2MB
+      sharpMockState.nextResizeSize = 400_000; // リサイズで400KBに
+      const largeImage = Buffer.alloc(2_000_000, 0xFF);
+      const mockFetch = createFullFlowFetchMock({ imageBuffer: largeImage });
+      globalThis.fetch = mockFetch;
+      const req = createMockReq();
+      const res = createMockRes();
+      await handler(req, res);
+      expect(res._status).toBe(200);
+      expect(res._json.success).toBe(true);
+      const uploadCall = mockFetch.mock.calls.find(c => c[0].includes('uploadBlob'));
+      expect(uploadCall[1].headers['Content-Type']).toBe('image/jpeg');
+      expect(uploadCall[1].body.byteLength).toBeLessThanOrEqual(1_000_000);
+    });
+
+    it('リサイズ後も1MB超過時に400エラーを返す', async () => {
+      sharpMockState.nextJpegSize = 1_500_000; // JPEG変換でもまだ1.5MB
+      sharpMockState.nextResizeSize = 1_100_000; // リサイズ後もまだ1.1MB
+      const largeImage = Buffer.alloc(3_000_000, 0xFF);
+      const mockFetch = createFullFlowFetchMock({ imageBuffer: largeImage });
+      globalThis.fetch = mockFetch;
+      const req = createMockReq();
+      const res = createMockRes();
+      await handler(req, res);
       expect(res._status).toBe(400);
-      expect(res._json.error).toContain('1MB');
+      expect(res._json.error).toContain('圧縮後');
       expect(mockFetch._lockDeleted.value).toBe(true);
+    });
+
+    it('1MB以下の画像はそのままPNGでアップロードされる', async () => {
+      sharpMockState.nextJpegSize = 500_000; // リセット
+      sharpMockState.nextResizeSize = 300_000;
+      const mockFetch = createFullFlowFetchMock();
+      globalThis.fetch = mockFetch;
+      const req = createMockReq();
+      const res = createMockRes();
+      await handler(req, res);
+      expect(res._status).toBe(200);
+      const uploadCall = mockFetch.mock.calls.find(c => c[0].includes('uploadBlob'));
+      expect(uploadCall).toBeDefined();
+      expect(uploadCall[1].headers['Content-Type']).toBe('image/png');
     });
   });
 

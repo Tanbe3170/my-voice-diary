@@ -23,5 +23,8 @@
   "homepage": "https://github.com/Tanbe3170/my-voice-diary#readme",
   "devDependencies": {
     "vitest": "^4.0.18"
+  },
+  "dependencies": {
+    "sharp": "^0.34.5"
   }
 }

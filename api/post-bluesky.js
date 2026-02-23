@@ -13,6 +13,7 @@
 // 7. エラーハンドリング（try/finallyでロック解放保証）
 
 import { isIP } from 'net';
+import sharp from 'sharp';
 import { handleCors } from './lib/cors.js';
 import { verifyJwt } from './lib/jwt.js';
 
@@ -361,11 +362,31 @@ export default async function handler(req, res) {
 
       const imageBuffer = await imageResponse.arrayBuffer();
 
-      // 画像サイズチェック（Bluesky上限: 1MB）
-      if (imageBuffer.byteLength > 1_000_000) {
-        return res.status(400).json({
-          error: '画像サイズが大きすぎます（Bluesky上限: 1MB）。'
-        });
+      // 画像圧縮（Bluesky上限: 1MB）
+      let uploadBuffer = Buffer.from(imageBuffer);
+      let uploadMimeType = 'image/png';
+
+      if (uploadBuffer.byteLength > 1_000_000) {
+        // PNG → JPEG変換（quality 80）
+        uploadBuffer = await sharp(uploadBuffer)
+          .jpeg({ quality: 80 })
+          .toBuffer();
+        uploadMimeType = 'image/jpeg';
+
+        // まだ1MB超過の場合はリサイズ
+        if (uploadBuffer.byteLength > 1_000_000) {
+          uploadBuffer = await sharp(uploadBuffer)
+            .resize(800, 800, { fit: 'inside' })
+            .jpeg({ quality: 75 })
+            .toBuffer();
+        }
+
+        // 圧縮後も1MB超過の場合はエラー
+        if (uploadBuffer.byteLength > 1_000_000) {
+          return res.status(400).json({
+            error: '画像の圧縮後もサイズが1MBを超えています。'
+          });
+        }
       }
 
       // ===================================================================
@@ -420,10 +441,10 @@ export default async function handler(req, res) {
       const uploadResponse = await fetch('https://bsky.social/xrpc/com.atproto.repo.uploadBlob', {
         method: 'POST',
         headers: {
-          'Content-Type': 'image/png',
+          'Content-Type': uploadMimeType,
           'Authorization': `Bearer ${accessJwt}`
         },
-        body: Buffer.from(imageBuffer),
+        body: uploadBuffer,
         signal: AbortSignal.timeout(Math.min(8000, remaining13))
       });
 
