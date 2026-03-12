@@ -45,3 +45,9 @@ temp/
 # === Claude Code作業計画ファイル ===
 plans/
 *.plan.md
+
+# === 仮想カンパニー ===
+.company/
+
+# === サブエージェント ===
+.agent/
