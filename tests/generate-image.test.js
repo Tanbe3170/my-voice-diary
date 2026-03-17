@@ -11,9 +11,12 @@ import crypto from 'crypto';
 
 // テスト用の有効なHMACトークンを生成するヘルパー
 const IMAGE_TOKEN_SECRET = 'test-secret-key';
-function createValidToken(date) {
+function createValidToken(date, filePath) {
   const timestamp = Date.now();
-  const payload = `${date}:${timestamp}`;
+  // filePathが指定されている場合は署名に含める（api側と一致させる）
+  const payload = filePath
+    ? `${date}:${filePath}:${timestamp}`
+    : `${date}:${timestamp}`;
   const hmac = crypto.createHmac('sha256', IMAGE_TOKEN_SECRET)
     .update(payload).digest('hex');
   return `${timestamp}:${hmac}`;
@@ -345,7 +348,7 @@ describe('generate-image API', () => {
       const req = createMockReq({
         body: {
           date: '2026-02-19',
-          imageToken: createValidToken('2026-02-19'),
+          imageToken: createValidToken('2026-02-19', 'diaries/2026/02/my-custom-diary.md'),
           filePath: 'diaries/2026/02/my-custom-diary.md',
         },
       });

@@ -14,6 +14,23 @@
   </header>
 
   <main>
+    <div class="content-type-selector" style="display:flex;gap:8px;margin-bottom:16px;">
+      <button class="type-btn active" data-type="diary" id="tab-diary" style="padding:8px 16px;border:2px solid #333;border-radius:4px;background:#333;color:#fff;cursor:pointer;">日記</button>
+      <button class="type-btn" data-type="research" id="tab-research" style="padding:8px 16px;border:2px solid #333;border-radius:4px;background:#fff;color:#333;cursor:pointer;">リサーチ</button>
+    </div>
+
+    <div id="research-fields" style="display:none;margin-bottom:16px;">
+      <label for="research-category">カテゴリ</label>
+      <select id="research-category" style="display:block;width:100%;padding:8px;margin:4px 0 12px;">
+        <option value="general">一般</option>
+        <option value="dinosaur">恐竜</option>
+        <option value="tech">技術</option>
+        <option value="skill">スキルアップ</option>
+      </select>
+      <label for="research-topic">トピック（任意）</label>
+      <input type="text" id="research-topic" maxlength="50" placeholder="例: 恐竜の飛行進化" style="display:block;width:100%;padding:8px;margin:4px 0;">
+    </div>
+
     <div class="input-methods">
       <h2>入力方法を選択</h2>
 
@@ -130,6 +147,36 @@
       voiceStatus.textContent = 'このブラウザは音声認識に対応していません';
     }
 
+    // === コンテンツタイプ切替（日記/リサーチ） ===
+    let currentContentType = 'diary';
+    const tabDiary = document.getElementById('tab-diary');
+    const tabResearch = document.getElementById('tab-research');
+    const researchFields = document.getElementById('research-fields');
+
+    function switchContentType(type) {
+      currentContentType = type;
+      if (type === 'research') {
+        tabDiary.classList.remove('active');
+        tabDiary.style.background = '#fff';
+        tabDiary.style.color = '#333';
+        tabResearch.classList.add('active');
+        tabResearch.style.background = '#333';
+        tabResearch.style.color = '#fff';
+        researchFields.style.display = 'block';
+      } else {
+        tabResearch.classList.remove('active');
+        tabResearch.style.background = '#fff';
+        tabResearch.style.color = '#333';
+        tabDiary.classList.add('active');
+        tabDiary.style.background = '#333';
+        tabDiary.style.color = '#fff';
+        researchFields.style.display = 'none';
+      }
+    }
+
+    tabDiary.onclick = () => switchContentType('diary');
+    tabResearch.onclick = () => switchContentType('research');
+
     // === Phase 2.5: Vercel Function連携処理 ===
     const processBtn = document.getElementById('process-btn');
     const progressDiv = document.getElementById('progress');
@@ -140,7 +187,7 @@
       const rawText = diaryText.value.trim();
 
       if (!rawText) {
-        alert('日記の内容を入力してください。');
+        alert(currentContentType === 'research' ? 'リサーチの内容を入力してください。' : '日記の内容を入力してください。');
         return;
       }
 
@@ -160,16 +207,29 @@
       progressBar.value = 20;
 
       try {
-        // Phase 2.5: Vercel Functionに日記作成をリクエスト
+        // Vercel Functionにリクエスト（日記 or リサーチ）
         progressBar.value = 30;
 
-        const response = await fetch('/api/create-diary', {
+        let apiUrl, requestBody;
+        if (currentContentType === 'research') {
+          apiUrl = '/api/create-research';
+          requestBody = { rawText };
+          const category = document.getElementById('research-category').value;
+          const topic = document.getElementById('research-topic').value.trim();
+          if (category) requestBody.category = category;
+          if (topic) requestBody.topic = topic;
+        } else {
+          apiUrl = '/api/create-diary';
+          requestBody = { rawText };
+        }
+
+        const response = await fetch(apiUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'X-Auth-Token': authToken
           },
-          body: JSON.stringify({ rawText })
+          body: JSON.stringify(requestBody)
         });
 
         progressBar.value = 70;
@@ -238,13 +298,16 @@
             imageBtn.textContent = '🎨 画像を生成中...';
 
             try {
+              const imgRequestBody = {
+                date: result.date,
+                imageToken: result.imageToken
+              };
+              if (result.filePath) imgRequestBody.filePath = result.filePath;
+
               const imgResponse = await fetch('/api/generate-image', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  date: result.date,
-                  imageToken: result.imageToken
-                })
+                body: JSON.stringify(imgRequestBody)
               });
 
               if (!imgResponse.ok) {
@@ -340,7 +403,8 @@
                     },
                     body: JSON.stringify({
                       date: result.date,
-                      caption: igCaption.value || undefined
+                      caption: igCaption.value || undefined,
+                      filePath: result.filePath || undefined
                     })
                   });
 
@@ -448,7 +512,8 @@
                     },
                     body: JSON.stringify({
                       date: result.date,
-                      text: bsText.value || undefined
+                      text: bsText.value || undefined,
+                      filePath: result.filePath || undefined
                     })
                   });
 
@@ -544,7 +609,8 @@
                     },
                     body: JSON.stringify({
                       date: result.date,
-                      text: thText.value || undefined
+                      text: thText.value || undefined,
+                      filePath: result.filePath || undefined
                     })
                   });
 

@@ -674,7 +674,10 @@ ${diaryData.body}
     let imageToken = null;
     if (IMAGE_TOKEN_SECRET) {
       const timestamp = Date.now();
-      const payload = `${todayISO}:${timestamp}`;
+      // filePathをHMAC署名に含めてトークンとfilePathを拘束する
+      const payload = filePath
+        ? `${todayISO}:${filePath}:${timestamp}`
+        : `${todayISO}:${timestamp}`;
       const hmac = crypto.createHmac('sha256', IMAGE_TOKEN_SECRET)
         .update(payload).digest('hex');
       imageToken = `${timestamp}:${hmac}`;

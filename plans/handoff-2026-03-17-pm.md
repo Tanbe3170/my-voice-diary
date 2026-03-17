@@ -1,81 +1,92 @@
-# セッション引き継ぎ資料（2026-03-17 14:20）
+# セッション引き継ぎ資料（2026-03-17 16:10 更新）
 
 ## 完了した作業
 
-### コミット: `bcda663` (main, pushed)
+### コミット: `bcda663` (main, pushed) - Plan 1-2
 全231テスト通過（168→231、+63テスト）
 
 | 作業 | 内容 | ファイル |
 |------|------|---------|
-| Plan 1 Phase 6a | create-diary.jsに恐竜モード追加（mode/dinoContext、プロンプト3分岐、ファイルパスサフィックス） | api/create-diary.js, tests/create-diary-dino.test.js |
-| Plan 2 Phase A | キャラクター基盤（character.js lib、image-backend.js lib、quetz-default.json） | api/lib/character.js, api/lib/image-backend.js, characters/quetz-default.json, tests/character.test.js, tests/image-backend.test.js |
-| 共通 filePath | generate-image.js + SNS 3APIにfilePath対応 + パストラバーサル防止 | api/generate-image.js, api/post-*.js, tests/*.test.js |
+| Plan 1 Phase 6a | create-diary.jsに恐竜モード追加（mode/dinoContext、プロンプト3分岐） | api/create-diary.js, tests/create-diary-dino.test.js |
+| Plan 2 Phase A | キャラクター基盤（character.js, image-backend.js, quetz-default.json） | api/lib/character.js, api/lib/image-backend.js, characters/ |
+| 共通 filePath | generate-image.js + SNS 3APIにfilePath対応 | api/generate-image.js, api/post-*.js |
+
+### 未コミット - Plan 3-4 + Codexレビュー修正
+全294テスト通過（231→294、+63テスト）
+
+| 作業 | 内容 | ファイル |
+|------|------|---------|
+| Plan 3 | リサーチ投稿API（Claude整形→GitHub research/保存） | api/create-research.js (新規571行), tests/create-research.test.js (37テスト) |
+| Plan 4 | メモ保存API（JWTのみ、外部API不使用、inbox追記） | api/create-memo.js (新規307行), tests/create-memo.test.js (26テスト), docs/memo-input.html |
+| filePath拡張 | 4API検証を ^(diaries\|research)/ に拡張 | api/generate-image.js, api/post-*.js |
+| リサーチUI | diary-input.htmlにタブ切替+カテゴリ+トピック | docs/diary-input.html |
+| Codex修正1 | SNS冪等性キー: date→filePathハッシュ | api/post-*.js (cryptoインポート追加) |
+| Codex修正2 | 画像パス: date.png→basename動的化 | api/generate-image.js, api/post-*.js |
+| Codex修正3 | imageToken: HMAC署名にfilePath含める | api/create-diary.js, api/create-research.js, api/generate-image.js |
 
 ---
 
 ## 次のアクション（優先順）
 
-### 1. Plan 2 Phase A 統合（generate-image.jsにキャラクター+フォールバック統合）
-- `api/generate-image.js` に character.js / image-backend.js を統合
-- characterId パラメータ追加 → キャラクター設定読み込み → プロンプト合成 → フォールバックチェーンで画像生成
-- テスト追加（tests/generate-image.test.js に5テスト）
-- **依存**: `npm install` で @google/genai をインストールしてからテスト
+### 1. codex-review続行（iteration 2/5から）
 
-### 2. Plan 2 Phase B（create-diary.jsにキャラクター注入）
-- characterId パラメータ追加
-- Claudeプロンプトにキャラクター設定注入（injectCharacterPrompt使用）
-- レスポンスにcharacterIdを含める
+archレビューでblocking 3件検出→修正済み。次はdiff再レビュー実行。
 
-### 3. Plan 1 Phase 6b（フロントエンドUI）
-- diary-input.htmlにモード選択タブUI追加
-- 恐竜日記モード / リサーチ日記モード用の入力フォーム
+**前回Codexメモ**:
+> 再レビュー時は「コンテンツ識別子をdate以外へ拡張できたか」を最優先確認。Redisキー、画像保存パス、imageToken署名入力、フロントAPI引数を一貫して同一識別子に揃えているか。
 
-### 4. Plan 2 Phase C-D（フロントエンド + SNS連携）
-- キャラクター選択UI
-- SNSキャプションにキャラクター情報反映
+**advisory 2件（参考）**:
+- create-memo.jsのexpire失敗時fail-closed未統一
+- 同日diary+research並行運用の統合テスト不足
 
-### 5. codex-review
-- 全実装完了後に実施
+### 2. Plan 2 Phase A統合（generate-image.jsにキャラクター統合）
+- character.js / image-backend.js を generate-image.js に統合
+- characterId パラメータ → フォールバックチェーン画像生成
+- `npm install` で @google/genai 必要
+
+### 3. Plan 2 Phase B-D（キャラクター完全統合）
 
 ---
 
-## 環境設定メモ（出先PC用）
+## 変更ファイル一覧
 
-```bash
-# リポジトリ取得
-git pull origin main
-
-# 依存インストール（@google/genaiが新規追加）
-npm install
-
-# テスト実行（231テスト通過を確認）
-npm test
-
-# 新しい環境変数（Vercelにも設定必要）
-# GOOGLE_API_KEY      - Gemini NB2/NBpro画像生成用
-# GEMINI_NB2_MODEL    - NB2モデルID上書き（任意）
-# GEMINI_NBPRO_MODEL  - NBproモデルID上書き（任意）
-```
+| ファイル | 状態 | テスト |
+|---------|------|-------|
+| api/create-research.js | 新規 | 37テスト |
+| api/create-memo.js | 新規 | 26テスト |
+| tests/create-research.test.js | 新規 | - |
+| tests/create-memo.test.js | 新規 | - |
+| docs/memo-input.html | 新規 | - |
+| api/create-diary.js | 変更 | 既存通過 |
+| api/generate-image.js | 変更 | 既存通過 |
+| api/post-instagram.js | 変更 | 既存通過 |
+| api/post-bluesky.js | 変更 | 既存通過 |
+| api/post-threads.js | 変更 | 既存通過 |
+| docs/diary-input.html | 変更 | - |
+| tests/generate-image.test.js | 変更 | 既存通過 |
 
 ---
 
 ## 再開プロンプト
 
 ```
-前回のセッション（2026-03-17 14:20）の続きです。
+前回のセッション（2026-03-17 16:10）の続きです。
 
 ## 状況
-- コミット bcda663 で Plan1 恐竜日記モード + Plan2 キャラクター基盤 + 共通filePath対応を実装済み
-- 全231テスト通過
+- Plan 1-2はコミット bcda663 で実装済み（pushed）
+- Plan 3（リサーチ投稿API）+ Plan 4（メモAPI）は実装完了、未コミット
+- Codex archレビューでblocking 3件検出→修正済み、全294テスト通過
+- codex-review iteration 2（diffレビュー）から再開が必要
 
 ## 今回やりたいこと
-1. Plan 2 Phase A統合: generate-image.jsにcharacter.js + image-backend.jsを統合
-2. Plan 2 Phase B: create-diary.jsにキャラクター注入
-3. Plan 1 Phase 6b: フロントエンドモード選択UI
-4. 完了後codex-review
+1. codex-reviewをiteration 2から再開し、ok: trueまで反復
+2. ok: true後にコミット
+3. 時間があればPlan 2 Phase A統合
 
 ## 参照
+- plans/handoff-2026-03-17-pm.md（この資料）
+- plans/idea-3-research-post.md
+- plans/idea-4-iphone-idea-capture.md
 - plans/idea-1-dino-diary-system.md
 - plans/idea-2-original-character-diary.md
-- plans/handoff-2026-03-17-pm.md
 ```

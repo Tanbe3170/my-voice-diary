@@ -101,7 +101,7 @@ export default async function handler(req, res) {
       if (typeof filePath !== 'string') {
         return res.status(400).json({ error: 'ファイルパスの形式が不正です。' });
       }
-      if (!/^diaries\/\d{4}\/\d{2}\/[\w-]+\.md$/.test(filePath)) {
+      if (!/^(diaries|research)\/\d{4}\/\d{2}\/[\w-]+\.md$/.test(filePath)) {
         return res.status(400).json({ error: 'ファイルパスの形式が不正です。' });
       }
       if (filePath.includes('..') || filePath.includes('//')) {
@@ -130,8 +130,12 @@ export default async function handler(req, res) {
     }
 
     // HMAC再計算と検証（タイミング攻撃対策: crypto.timingSafeEqual使用）
+    // filePathが指定されている場合は署名に含めて拘束する
+    const expectedPayload = filePath
+      ? `${date}:${filePath}:${tsStr}`
+      : `${date}:${tsStr}`;
     const expectedHmac = crypto.createHmac('sha256', IMAGE_SECRET)
-      .update(`${date}:${tsStr}`).digest('hex');
+      .update(expectedPayload).digest('hex');
     const a = Buffer.from(receivedHmac, 'hex');
     const b = Buffer.from(expectedHmac, 'hex');
     if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
@@ -275,7 +279,14 @@ export default async function handler(req, res) {
     // 9. GitHub Contents APIで画像を保存
     // ===================================================================
 
-    const imagePath = `docs/images/${date}.png`;
+    // 画像パス構築（filePath指定時はslugベースの名前を使用）
+    let imageName = date;
+    if (filePath && filePath.startsWith('research/')) {
+      // research/2026/03/2026-03-17-flight-evolution.md → 2026-03-17-flight-evolution
+      const basename = filePath.split('/').pop().replace(/\.md$/, '');
+      imageName = basename;
+    }
+    const imagePath = `docs/images/${imageName}.png`;
     const imageApiUrl = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${imagePath}`;
 
     // 既存ファイルのSHA取得（上書き時に必要）

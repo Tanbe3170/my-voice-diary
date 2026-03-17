@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>メモ - My Voice Diary</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <style>
+    /* メモ入力ページ固有スタイル */
+    .memo-area {
+      margin-top: 1rem;
+    }
+
+    .memo-area textarea {
+      margin-top: 0.5rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .memo-char-count {
+      display: block;
+      text-align: right;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      margin-bottom: 0.75rem;
+    }
+
+    .memo-char-count.over-limit {
+      color: var(--error);
+      font-weight: 600;
+    }
+
+    .tag-input {
+      margin-bottom: 0.75rem;
+    }
+
+    .tag-input input {
+      width: 100%;
+      padding: 0.6rem 1rem;
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      font-size: 1rem;
+      font-family: inherit;
+      background-color: var(--background);
+      color: var(--text);
+    }
+
+    .tag-input input:focus {
+      outline: none;
+      border-color: var(--primary-color);
+    }
+
+    .memo-submit-btn {
+      background-color: var(--secondary-color);
+      color: white;
+      width: 100%;
+      font-size: 1.1rem;
+      padding: 0.75rem 1.5rem;
+    }
+
+    .memo-submit-btn:hover:not(:disabled) {
+      background-color: #059669;
+    }
+
+    .memo-submit-btn:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+
+    .memo-success {
+      margin-top: 0.75rem;
+      padding: 0.75rem;
+      background-color: #D1FAE5;
+      border-radius: 8px;
+      color: #065F46;
+    }
+
+    .memo-error {
+      color: var(--error);
+      font-size: 0.9rem;
+      margin-top: 0.5rem;
+    }
+
+    .nav-links {
+      margin-top: 1rem;
+      font-size: 0.9rem;
+    }
+
+    .nav-links a {
+      color: var(--primary-color);
+      text-decoration: none;
+      margin-right: 1rem;
+    }
+
+    .nav-links a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>メモ</h1>
+    <button onclick="location.href='index.html'">← 戻る</button>
+  </header>
+
+  <main>
+    <div class="input-area memo-area">
+      <label for="memo-text">アイデア・メモ</label>
+      <textarea id="memo-text" rows="6"
+        placeholder="思いついたことをメモ..."></textarea>
+      <span id="memo-char-count" class="memo-char-count">0 / 5000</span>
+
+      <div class="tag-input">
+        <label for="memo-tag">タグ（任意）</label>
+        <input type="text" id="memo-tag" maxlength="50"
+          placeholder="例: アイデア、TODO、買い物">
+      </div>
+
+      <button id="memo-btn" class="memo-submit-btn">
+        保存する
+      </button>
+
+      <div id="memo-result" style="display:none;"></div>
+    </div>
+
+    <div class="nav-links">
+      <a href="diary-input.html">日記作成</a>
+      <a href="index.html">日記一覧</a>
+    </div>
+  </main>
+
+  <script>
+    // === メモ入力ページ ===
+    const memoText = document.getElementById('memo-text');
+    const memoTag = document.getElementById('memo-tag');
+    const memoBtn = document.getElementById('memo-btn');
+    const memoCharCount = document.getElementById('memo-char-count');
+    const memoResult = document.getElementById('memo-result');
+
+    // 文字数カウント
+    memoText.addEventListener('input', () => {
+      const len = memoText.value.length;
+      const over = len > 5000;
+      memoCharCount.textContent = `${len} / 5000`;
+      memoCharCount.classList.toggle('over-limit', over);
+      memoBtn.disabled = over || len === 0;
+    });
+
+    // 送信処理
+    memoBtn.onclick = async () => {
+      const text = memoText.value.trim();
+
+      if (!text) {
+        alert('メモの内容を入力してください。');
+        return;
+      }
+
+      // JWT認証トークンの取得（diary-input.htmlと共有）
+      let authToken = sessionStorage.getItem('auth_token');
+      if (!authToken) {
+        authToken = prompt('認証トークン（JWT）を入力してください:\n\n※ このトークンは管理者から提供されます。');
+        if (!authToken) {
+          alert('認証トークンが必要です。');
+          return;
+        }
+        sessionStorage.setItem('auth_token', authToken);
+      }
+
+      memoBtn.disabled = true;
+      memoBtn.textContent = '保存中...';
+
+      try {
+        const body = { text };
+        const tag = memoTag.value.trim();
+        if (tag) {
+          body.tag = tag;
+        }
+
+        const response = await fetch('/api/create-memo', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Auth-Token': authToken
+          },
+          body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          if (response.status === 401) {
+            sessionStorage.removeItem('auth_token');
+          }
+          throw new Error(errorData.error || 'メモの保存に失敗しました。');
+        }
+
+        const result = await response.json();
+
+        // 成功表示
+        memoResult.style.display = 'block';
+        memoResult.textContent = '';
+
+        const successDiv = document.createElement('div');
+        successDiv.className = 'memo-success';
+
+        const msgP = document.createElement('p');
+        msgP.textContent = '保存しました！';
+        successDiv.appendChild(msgP);
+
+        const timeP = document.createElement('p');
+        timeP.textContent = `${result.timestamp} に記録`;
+        successDiv.appendChild(timeP);
+
+        memoResult.appendChild(successDiv);
+
+        // フォームクリア（連続入力可能に）
+        memoText.value = '';
+        memoTag.value = '';
+        memoCharCount.textContent = '0 / 5000';
+
+        // 3秒後に成功メッセージを非表示
+        setTimeout(() => {
+          memoResult.style.display = 'none';
+          memoResult.textContent = '';
+        }, 3000);
+
+      } catch (error) {
+        memoResult.style.display = 'block';
+        memoResult.textContent = '';
+
+        const errorP = document.createElement('p');
+        errorP.className = 'memo-error';
+        errorP.textContent = error.message;
+        memoResult.appendChild(errorP);
+      } finally {
+        memoBtn.disabled = false;
+        memoBtn.textContent = '保存する';
+      }
+    };
+
+    // ページ終了時にトークンを自動削除
+    window.addEventListener('beforeunload', () => {
+      sessionStorage.removeItem('auth_token');
+    });
+  </script>
+</body>
+</html>

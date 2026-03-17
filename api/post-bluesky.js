@@ -12,6 +12,7 @@
 // 6. 動的タイムアウト（25秒デッドライン、getRemainingTimeout）
 // 7. エラーハンドリング（try/finallyでロック解放保証）
 
+import crypto from 'crypto';
 import { isIP } from 'net';
 import sharp from 'sharp';
 import { handleCors } from './lib/cors.js';
@@ -116,7 +117,7 @@ export default async function handler(req, res) {
       if (typeof filePath !== 'string') {
         return res.status(400).json({ error: 'ファイルパスの形式が不正です。' });
       }
-      if (!/^diaries\/\d{4}\/\d{2}\/[\w-]+\.md$/.test(filePath)) {
+      if (!/^(diaries|research)\/\d{4}\/\d{2}\/[\w-]+\.md$/.test(filePath)) {
         return res.status(400).json({ error: 'ファイルパスの形式が不正です。' });
       }
       if (filePath.includes('..') || filePath.includes('//')) {
@@ -229,8 +230,12 @@ export default async function handler(req, res) {
     // 8. 重複投稿防止（冪等性保証）
     // ===================================================================
 
-    const postedKey = `bs_posted:${date}`;
-    const lockKey = `bs_lock:${date}`;
+    // 冪等性キーにfilePath情報を含める（同日の異なるコンテンツが競合しないように）
+    const idempotencyId = filePath
+      ? crypto.createHash('sha256').update(filePath).digest('hex').slice(0, 16)
+      : date;
+    const postedKey = `bs_posted:${idempotencyId}`;
+    const lockKey = `bs_lock:${idempotencyId}`;
 
     // 既投稿チェック
     try {
@@ -360,7 +365,13 @@ export default async function handler(req, res) {
         return res.status(504).json({ error: '処理時間が不足しています。' });
       }
 
-      const imagePath = `docs/images/${date}.png`;
+      // 画像パス構築（filePath指定時はslugベースの名前を使用）
+      let imageName = date;
+      if (filePath && filePath.startsWith('research/')) {
+        const basename = filePath.split('/').pop().replace(/\.md$/, '');
+        imageName = basename;
+      }
+      const imagePath = `docs/images/${imageName}.png`;
       const imageUrl = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/${imagePath}`;
 
       const imageResponse = await fetch(imageUrl, {
