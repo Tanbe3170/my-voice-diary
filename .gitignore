@@ -43,5 +43,5 @@ temp/
 *.tmp
 
 # === Claude Code作業計画ファイル ===
-plans/
+# plans/ はgit管理対象（アイデア実装計画をcodex-reviewで管理するため）
 *.plan.md
