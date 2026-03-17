@@ -17,6 +17,122 @@ import { verifyJwt } from './lib/jwt.js';
 // 5. LLM出力スキーマ検証（型・長さ検証、YAMLエスケープ）
 // 6. エラーハンドリング（汎用エラーのみ返却）
 
+// ===================================================================
+// プロンプト構築ヘルパー関数（モード別）
+// ===================================================================
+
+const JSON_OUTPUT_SCHEMA = (today) => `以下のJSON形式で出力してください。JSONの前後に説明文は不要です。
+
+\`\`\`json
+{
+  "date": "${today}",
+  "title": "その日の出来事を要約した魅力的なタイトル（15文字以内）",
+  "summary": "3行サマリー（1行30文字程度、改行で区切る）",
+  "body": "詳細な日記本文（段落分けあり、文語体で整った文章）",
+  "tags": ["関連するハッシュタグ", "5個程度"],
+  "image_prompt": "この日記から1枚の画像を生成するための英語プロンプト（DALL-E用、詳細に）"
+}
+\`\`\``;
+
+function buildNormalPrompt(rawText, today) {
+  return `あなたは日記執筆のアシスタントです。以下の音声入力テキスト（口語）を、文語の日記形式に整形してください。
+
+【音声入力テキスト】
+${rawText}
+
+【出力形式】
+${JSON_OUTPUT_SCHEMA(today)}
+
+【整形のルール】
+1. 口語（「〜でした」「〜なんだけど」）→ 文語（「〜だった」「〜だが」）
+2. タイトルは読者の興味を引く工夫をする
+3. サマリーは3行で要点をまとめる
+4. 本文は適度に段落分けし、読みやすくする
+5. ハッシュタグはInstagram投稿を想定（#日記 #今日の出来事 など）
+6. 画像プロンプトは情景が浮かぶような具体的な英語で記述
+
+それでは、音声入力テキストを日記に整形してください。`;
+}
+
+function buildDinoStoryPrompt(rawText, today, dinoContext) {
+  const era = dinoContext?.era || 'modern';
+  const species = dinoContext?.species || '恐竜（種類はお任せ）';
+  const scenario = dinoContext?.scenario || 'coexistence';
+
+  return `あなたは日記執筆のアシスタントです。以下の音声入力テキストを、
+「恐竜が絶滅せず現代まで進化し続けた」パラレルワールドの日記として整形してください。
+
+【世界観設定】
+- 恐竜は6600万年前に絶滅せず、現代まで進化を続けた
+- 人類と恐竜は共存している
+- 時代: ${era}
+- 主要登場恐竜: <user_input>${species}</user_input>
+- シナリオ: ${scenario}
+
+【音声入力テキスト】
+<user_input>${rawText}</user_input>
+
+【出力形式】
+${JSON_OUTPUT_SCHEMA(today)}
+
+【整形ルール】
+1. 日常の出来事に自然に恐竜を組み込む（無理のない範囲で）
+2. 科学的にもっともらしい恐竜の進化形態を想像する
+3. ユーモアと驚きを含む読み物として面白い日記にする
+4. 口語→文語変換は通常の日記と同様に行う
+5. image_promptは「恐竜が現代にいる」情景を具体的に描写する
+6. ハッシュタグに #恐竜日記 #DinoWorld を含める
+
+それでは、音声入力テキストを恐竜世界の日記に整形してください。`;
+}
+
+function buildDinoResearchPrompt(rawText, today, dinoContext) {
+  const topic = dinoContext?.topic || '恐竜に関する調査';
+  const sources = dinoContext?.sources || [];
+
+  const sourcesSection = sources.length > 0
+    ? `【参考文献】\n${sources.map(s => `- <user_input>${s}</user_input>`).join('\n')}`
+    : '';
+
+  return `あなたは古生物学の研究ノート執筆アシスタントです。以下の調査メモを、
+構造化された研究ノート形式の日記に整形してください。
+
+【研究テーマ】
+<user_input>${topic}</user_input>
+
+${sourcesSection}
+
+【調査メモ】
+<user_input>${rawText}</user_input>
+
+【出力形式】
+${JSON_OUTPUT_SCHEMA(today)}
+
+【整形ルール】
+1. 以下の構造で本文を整形する:
+   - 背景・動機
+   - 調査内容・発見
+   - 考察・仮説
+   - 残る疑問・次の調査計画
+2. 専門用語は読みやすく解説を添える
+3. image_promptは科学的に正確な恐竜のイラスト指示にする
+4. タグに研究分野・恐竜種を含める（#恐竜研究 #古生物学 を含める）
+5. 口語→文語変換は通常の日記と同様に行う
+
+それでは、調査メモを研究ノート形式の日記に整形してください。`;
+}
+
+function buildPrompt(mode, rawText, today, dinoContext) {
+  switch (mode) {
+    case 'dino-story':
+      return buildDinoStoryPrompt(rawText, today, dinoContext);
+    case 'dino-research':
+      return buildDinoResearchPrompt(rawText, today, dinoContext);
+    default:
+      return buildNormalPrompt(rawText, today);
+  }
+}
+
 export default async function handler(req, res) {
   // ===================================================================
   // 1. CORS設定（共通ヘルパー使用）
@@ -193,8 +309,8 @@ export default async function handler(req, res) {
     // 6. 入力検証
     // ===================================================================
 
-    // リクエストボディから日記の生テキストを取得
-    const { rawText } = req.body;
+    // リクエストボディから日記の生テキストとモード情報を取得
+    const { rawText, mode, dinoContext } = req.body;
 
     // 必須フィールドの存在確認
     if (!rawText) {
@@ -215,6 +331,61 @@ export default async function handler(req, res) {
       return res.status(400).json({
         error: '日記の内容が長すぎます（10000文字以内）。'
       });
+    }
+
+    // ===================================================================
+    // 6b. モード検証（恐竜日記拡張）
+    // ===================================================================
+
+    const VALID_MODES = ['normal', 'dino-story', 'dino-research'];
+    if (mode && !VALID_MODES.includes(mode)) {
+      return res.status(400).json({ error: '不正なモードです。' });
+    }
+
+    // dinoContext検証（modeがdino-*の場合のみ）
+    const effectiveMode = mode || 'normal';
+    if (effectiveMode.startsWith('dino-') && dinoContext) {
+      if (typeof dinoContext !== 'object' || dinoContext === null || Array.isArray(dinoContext)) {
+        return res.status(400).json({ error: '不正なコンテキスト形式です。' });
+      }
+      // era検証（ホワイトリスト）
+      const VALID_ERAS = ['mesozoic', 'modern', 'future'];
+      if (dinoContext.era && !VALID_ERAS.includes(dinoContext.era)) {
+        return res.status(400).json({ error: '不正な時代設定です。' });
+      }
+      // scenario検証（ホワイトリスト）
+      const VALID_SCENARIOS = ['coexistence', 'dominance', 'hidden'];
+      if (dinoContext.scenario && !VALID_SCENARIOS.includes(dinoContext.scenario)) {
+        return res.status(400).json({ error: '不正なシナリオです。' });
+      }
+      // species: 50文字以内
+      if (dinoContext.species && (typeof dinoContext.species !== 'string' || dinoContext.species.length > 50)) {
+        return res.status(400).json({ error: '恐竜種名が不正です。' });
+      }
+      // topic: 200文字以内
+      if (dinoContext.topic && (typeof dinoContext.topic !== 'string' || dinoContext.topic.length > 200)) {
+        return res.status(400).json({ error: '研究テーマが不正です。' });
+      }
+      // sources: 最大5件、各要素string型・100文字以内
+      if (dinoContext.sources) {
+        if (!Array.isArray(dinoContext.sources) || dinoContext.sources.length > 5) {
+          return res.status(400).json({ error: '参考文献リストが不正です。' });
+        }
+        for (const source of dinoContext.sources) {
+          if (typeof source !== 'string' || source.length > 100) {
+            return res.status(400).json({ error: '参考文献の要素が不正です。' });
+          }
+        }
+        // サニタイズ: 制御文字・マークダウン記法を除去
+        dinoContext.sources = dinoContext.sources.map(s =>
+          s.replace(/[\x00-\x1f]/g, '').replace(/```/g, '').replace(/^---$/gm, '')
+        );
+      }
+      // topic: サニタイズ処理
+      if (dinoContext.topic) {
+        dinoContext.topic = dinoContext.topic
+          .replace(/[\x00-\x1f]/g, '').replace(/```/g, '').replace(/^---$/gm, '');
+      }
     }
 
     // ===================================================================
@@ -254,35 +425,8 @@ export default async function handler(req, res) {
       day: '2-digit'
     }).replace(/\//g, '年').replace(/年0?/, '年').replace(/月0?/, '月') + '日';
 
-    // Claude APIへのプロンプト（TECHNICAL_SPEC.mdの仕様に従う）
-    const claudePrompt = `あなたは日記執筆のアシスタントです。以下の音声入力テキスト（口語）を、文語の日記形式に整形してください。
-
-【音声入力テキスト】
-${rawText}
-
-【出力形式】
-以下のJSON形式で出力してください。JSONの前後に説明文は不要です。
-
-\`\`\`json
-{
-  "date": "${today}",
-  "title": "その日の出来事を要約した魅力的なタイトル（15文字以内）",
-  "summary": "3行サマリー（1行30文字程度、改行で区切る）",
-  "body": "詳細な日記本文（段落分けあり、文語体で整った文章）",
-  "tags": ["関連するハッシュタグ", "5個程度"],
-  "image_prompt": "この日記から1枚の画像を生成するための英語プロンプト（DALL-E用、詳細に）"
-}
-\`\`\`
-
-【整形のルール】
-1. 口語（「〜でした」「〜なんだけど」）→ 文語（「〜だった」「〜だが」）
-2. タイトルは読者の興味を引く工夫をする
-3. サマリーは3行で要点をまとめる
-4. 本文は適度に段落分けし、読みやすくする
-5. ハッシュタグはInstagram投稿を想定（#日記 #今日の出来事 など）
-6. 画像プロンプトは情景が浮かぶような具体的な英語で記述
-
-それでは、音声入力テキストを日記に整形してください。`;
+    // Claude APIプロンプト構築（モード別）
+    const claudePrompt = buildPrompt(effectiveMode, rawText, today, effectiveMode.startsWith('dino-') ? dinoContext : null);
 
     // Claude APIにリクエスト送信
     const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
@@ -412,6 +556,25 @@ ${rawText}
     const escapedImagePrompt = escapeYaml(diaryData.image_prompt);
     const escapedTags = tags.map(tag => escapeYaml(tag));
 
+    // モード付きfrontmatterの構築
+    let modeFrontmatter = '';
+    if (effectiveMode !== 'normal') {
+      modeFrontmatter += `mode: "${effectiveMode}"\n`;
+      if (dinoContext && effectiveMode.startsWith('dino-')) {
+        modeFrontmatter += 'dino_context:\n';
+        if (dinoContext.era) modeFrontmatter += `  era: "${escapeYaml(dinoContext.era)}"\n`;
+        if (dinoContext.species) modeFrontmatter += `  species: "${escapeYaml(dinoContext.species)}"\n`;
+        if (dinoContext.scenario) modeFrontmatter += `  scenario: "${escapeYaml(dinoContext.scenario)}"\n`;
+        if (dinoContext.topic) modeFrontmatter += `  topic: "${escapeYaml(dinoContext.topic)}"\n`;
+        if (dinoContext.sources) {
+          modeFrontmatter += '  sources:\n';
+          for (const src of dinoContext.sources) {
+            modeFrontmatter += `    - "${escapeYaml(src)}"\n`;
+          }
+        }
+      }
+    }
+
     // Markdown形式で日記ファイルを生成
     // 注意: tags要素は必ずクォートする（#記号がYAMLコメントと解釈されるのを防ぐ）
     const markdown = `---
@@ -419,7 +582,7 @@ title: "${escapedTitle}"
 date: ${todayISO}
 tags: [${escapedTags.map(t => `"${t}"`).join(', ')}]
 image_prompt: "${escapedImagePrompt}"
----
+${modeFrontmatter}---
 
 # ${diaryData.title}
 
@@ -442,8 +605,9 @@ ${diaryData.body}
     // 10. GitHub APIでリポジトリにpush
     // ===================================================================
 
-    // ファイルパス（例: diaries/2026/02/2026-02-16.md）
-    const filePath = `diaries/${year}/${month}/${todayISO}.md`;
+    // ファイルパス（例: diaries/2026/02/2026-02-16.md、モード付き: 2026-02-16-dino-story.md）
+    const modeSuffix = (effectiveMode && effectiveMode !== 'normal') ? `-${effectiveMode}` : '';
+    const filePath = `diaries/${year}/${month}/${todayISO}${modeSuffix}.md`;
     const apiUrl = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filePath}`;
 
     // 既存ファイルのSHA取得（上書き時に必要）
@@ -523,7 +687,8 @@ ${diaryData.body}
       filePath,
       githubUrl: `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/blob/main/${filePath}`,
       date: todayISO,
-      imageToken
+      imageToken,
+      mode: effectiveMode
     });
 
   } catch (error) {

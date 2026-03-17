@@ -400,6 +400,28 @@ describe('post-bluesky API', () => {
       expect(res._status).toBe(400);
     });
 
+    it('filePath不正形式で400', async () => {
+      const req = createMockReq({
+        body: { date: '2026-02-19', filePath: 'not/valid/path.txt' },
+      });
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(400);
+      expect(res._json.error).toContain('ファイルパス');
+    });
+
+    it('filePathパストラバーサルで400', async () => {
+      const req = createMockReq({
+        body: { date: '2026-02-19', filePath: 'diaries/2026/02/../../../etc/passwd' },
+      });
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(400);
+      expect(res._json.error).toContain('ファイルパス');
+    });
+
     it('text 300 graphemes超で400', async () => {
       const req = createMockReq({
         body: { date: '2026-02-19', text: 'あ'.repeat(301) },

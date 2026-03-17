@@ -66,7 +66,7 @@ export default async function handler(req, res) {
     // 5. 入力バリデーション
     // ===================================================================
 
-    const { date, caption } = req.body;
+    const { date, caption, filePath } = req.body;
 
     if (!date) {
       return res.status(400).json({ error: '必要なパラメータが不足しています。' });
@@ -85,6 +85,19 @@ export default async function handler(req, res) {
     const reformatted = parsedDate.toISOString().split('T')[0];
     if (reformatted !== date) {
       return res.status(400).json({ error: '日付の形式が不正です。' });
+    }
+
+    // filePath検証（任意パラメータ、パストラバーサル防止）
+    if (filePath !== undefined) {
+      if (typeof filePath !== 'string') {
+        return res.status(400).json({ error: 'ファイルパスの形式が不正です。' });
+      }
+      if (!/^diaries\/\d{4}\/\d{2}\/[\w-]+\.md$/.test(filePath)) {
+        return res.status(400).json({ error: 'ファイルパスの形式が不正です。' });
+      }
+      if (filePath.includes('..') || filePath.includes('//')) {
+        return res.status(400).json({ error: 'ファイルパスの形式が不正です。' });
+      }
     }
 
     // caption検証（任意パラメータ、最大2200文字）
@@ -282,7 +295,7 @@ export default async function handler(req, res) {
 
       const year = date.split('-')[0];
       const month = date.split('-')[1];
-      const diaryPath = `diaries/${year}/${month}/${date}.md`;
+      const diaryPath = filePath || `diaries/${year}/${month}/${date}.md`;
       const diaryApiUrl = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${diaryPath}`;
 
       const diaryResponse = await fetch(diaryApiUrl, {

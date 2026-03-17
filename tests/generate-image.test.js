@@ -309,7 +309,113 @@ describe('generate-image API', () => {
   });
 
   // =================================================================
-  // テスト4: Base64プレビューレスポンス
+  // テスト4: filePathパラメータ
+  // =================================================================
+  describe('filePathパラメータ', () => {
+    it('filePath指定時にそのパスで日記を取得すること', async () => {
+      let requestedDiaryUrl = null;
+
+      globalThis.fetch = vi.fn(async (url) => {
+        if (url.includes('upstash') && url.includes('incr')) {
+          return { ok: true, json: async () => ({ result: 1 }) };
+        }
+        if (url.includes('upstash') && url.includes('expire')) {
+          return { ok: true, json: async () => ({ result: 1 }) };
+        }
+        if (url.includes('api.github.com') && url.includes('contents/diaries')) {
+          requestedDiaryUrl = url;
+          const content = Buffer.from(
+            '---\nimage_prompt: "A test image prompt"\n---\n# Test',
+            'utf-8'
+          ).toString('base64');
+          return { ok: true, json: async () => ({ content, sha: 'abc123' }) };
+        }
+        if (url.includes('api.openai.com')) {
+          return {
+            ok: true,
+            json: async () => ({ data: [{ b64_json: Buffer.from('fake-png').toString('base64') }] }),
+          };
+        }
+        if (url.includes('api.github.com') && url.includes('contents/docs/images')) {
+          return { ok: true, json: async () => ({ content: {} }) };
+        }
+        return { ok: true, json: async () => ({}) };
+      });
+
+      const req = createMockReq({
+        body: {
+          date: '2026-02-19',
+          imageToken: createValidToken('2026-02-19'),
+          filePath: 'diaries/2026/02/my-custom-diary.md',
+        },
+      });
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(200);
+      // filePathで指定したパスがGitHub APIのURLに含まれること
+      expect(requestedDiaryUrl).toContain('diaries/2026/02/my-custom-diary.md');
+    });
+
+    it('filePath不正形式（パストラバーサル）で400を返す', async () => {
+      globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => ({}) }));
+
+      const req = createMockReq({
+        body: {
+          date: '2026-02-19',
+          imageToken: createValidToken('2026-02-19'),
+          filePath: '../../../etc/passwd',
+        },
+      });
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(400);
+      expect(res._json.error).toContain('ファイルパス');
+    });
+
+    it('filePath未指定時はdate基準のパスを使用すること（後方互換性）', async () => {
+      let requestedDiaryUrl = null;
+
+      globalThis.fetch = vi.fn(async (url) => {
+        if (url.includes('upstash') && url.includes('incr')) {
+          return { ok: true, json: async () => ({ result: 1 }) };
+        }
+        if (url.includes('upstash') && url.includes('expire')) {
+          return { ok: true, json: async () => ({ result: 1 }) };
+        }
+        if (url.includes('api.github.com') && url.includes('contents/diaries')) {
+          requestedDiaryUrl = url;
+          const content = Buffer.from(
+            '---\nimage_prompt: "A test image prompt"\n---\n# Test',
+            'utf-8'
+          ).toString('base64');
+          return { ok: true, json: async () => ({ content, sha: 'abc123' }) };
+        }
+        if (url.includes('api.openai.com')) {
+          return {
+            ok: true,
+            json: async () => ({ data: [{ b64_json: Buffer.from('fake-png').toString('base64') }] }),
+          };
+        }
+        if (url.includes('api.github.com') && url.includes('contents/docs/images')) {
+          return { ok: true, json: async () => ({ content: {} }) };
+        }
+        return { ok: true, json: async () => ({}) };
+      });
+
+      const req = createMockReq(); // filePath未指定
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(200);
+      // デフォルトのdate基準パスが使用されること
+      expect(requestedDiaryUrl).toContain('diaries/2026/02/2026-02-19.md');
+    });
+  });
+
+  // =================================================================
+  // テスト5: Base64プレビューレスポンス
   // =================================================================
   describe('Base64プレビューレスポンス', () => {
     // 正常フローの共通fetchモック（小さい画像）
