@@ -350,9 +350,9 @@ export default async function handler(req, res) {
         return res.status(504).json({ error: '処理時間が不足しています。' });
       }
 
-      // 画像パス構築（filePath指定時はslugベースの名前を使用）
+      // 画像パス構築（filePath指定時はbasenameを使用、未指定時はdateフォールバック）
       let imageName = date;
-      if (filePath && filePath.startsWith('research/')) {
+      if (filePath) {
         const basename = filePath.split('/').pop().replace(/\.md$/, '');
         imageName = basename;
       }

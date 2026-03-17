@@ -279,10 +279,9 @@ export default async function handler(req, res) {
     // 9. GitHub Contents APIで画像を保存
     // ===================================================================
 
-    // 画像パス構築（filePath指定時はslugベースの名前を使用）
+    // 画像パス構築（filePath指定時はbasenameを使用、未指定時はdateフォールバック）
     let imageName = date;
-    if (filePath && filePath.startsWith('research/')) {
-      // research/2026/03/2026-03-17-flight-evolution.md → 2026-03-17-flight-evolution
+    if (filePath) {
       const basename = filePath.split('/').pop().replace(/\.md$/, '');
       imageName = basename;
     }

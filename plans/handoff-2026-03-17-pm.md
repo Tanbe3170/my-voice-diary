@@ -1,4 +1,4 @@
-# セッション引き継ぎ資料（2026-03-17 16:10 更新）
+# セッション引き継ぎ資料（2026-03-17 16:40 更新）
 
 ## 完了した作業
 
@@ -11,7 +11,7 @@
 | Plan 2 Phase A | キャラクター基盤（character.js, image-backend.js, quetz-default.json） | api/lib/character.js, api/lib/image-backend.js, characters/ |
 | 共通 filePath | generate-image.js + SNS 3APIにfilePath対応 | api/generate-image.js, api/post-*.js |
 
-### 未コミット - Plan 3-4 + Codexレビュー修正
+### コミット: `859a384` (main, pushed) - Plan 3-4 + Codex修正(iteration 1)
 全294テスト通過（231→294、+63テスト）
 
 | 作業 | 内容 | ファイル |
@@ -24,69 +24,78 @@
 | Codex修正2 | 画像パス: date.png→basename動的化 | api/generate-image.js, api/post-*.js |
 | Codex修正3 | imageToken: HMAC署名にfilePath含める | api/create-diary.js, api/create-research.js, api/generate-image.js |
 
+### 未コミット - Codex修正(iteration 2) + テスト追加
+全295テスト通過（294→295、+1テスト）、**codex-review ok: true**
+
+| 作業 | 内容 | ファイル |
+|------|------|---------|
+| Codex修正4 | create-memo.js expire失敗時fail-closed化（500返却） | api/create-memo.js |
+| Codex修正5 | create-research.js AUTH_TOKENフォールバック削除→JWT専用化 | api/create-research.js |
+| Codex修正6 | imageName basename化条件を全filePath対応に拡張 | api/generate-image.js, api/post-*.js (4ファイル) |
+| テスト更新 | AUTH_TOKEN廃止反映 + JWT_SECRET未設定テスト追加 | tests/create-research.test.js |
+
+---
+
+## Codexレビュー履歴
+
+| iteration | phase | blocking | 結果 |
+|-----------|-------|----------|------|
+| 1 | arch | 3件 | SNS冪等性キー/画像パス/imageToken署名修正 → コミット859a384 |
+| 2 | diff並列(3グループ) | 3件 | expire fail-closed/JWT専用化/basename全filePath対応 |
+| 3 | cross-check | 0件 | **ok: true** |
+
+### Advisory（将来追加推奨）
+- 同日diary+research並行運用の統合テスト
+- filePathミスマッチ否定テスト（imageToken拘束検証）
+- create-memo expire fail-closed の単体テスト
+
 ---
 
 ## 次のアクション（優先順）
 
-### 1. codex-review続行（iteration 2/5から）
-
-archレビューでblocking 3件検出→修正済み。次はdiff再レビュー実行。
-
-**前回Codexメモ**:
-> 再レビュー時は「コンテンツ識別子をdate以外へ拡張できたか」を最優先確認。Redisキー、画像保存パス、imageToken署名入力、フロントAPI引数を一貫して同一識別子に揃えているか。
-
-**advisory 2件（参考）**:
-- create-memo.jsのexpire失敗時fail-closed未統一
-- 同日diary+research並行運用の統合テスト不足
-
-### 2. Plan 2 Phase A統合（generate-image.jsにキャラクター統合）
+### 1. Plan 2 Phase A統合（generate-image.jsにキャラクター統合）
 - character.js / image-backend.js を generate-image.js に統合
 - characterId パラメータ → フォールバックチェーン画像生成
 - `npm install` で @google/genai 必要
 
-### 3. Plan 2 Phase B-D（キャラクター完全統合）
+### 2. Plan 2 Phase B-D（キャラクター完全統合）
+
+### 3. Advisory対応（テスト追加）
 
 ---
 
-## 変更ファイル一覧
+## 変更ファイル一覧（未コミット）
 
 | ファイル | 状態 | テスト |
 |---------|------|-------|
-| api/create-research.js | 新規 | 37テスト |
-| api/create-memo.js | 新規 | 26テスト |
-| tests/create-research.test.js | 新規 | - |
-| tests/create-memo.test.js | 新規 | - |
-| docs/memo-input.html | 新規 | - |
-| api/create-diary.js | 変更 | 既存通過 |
+| api/create-memo.js | 変更 | 26テスト通過 |
+| api/create-research.js | 変更 | 38テスト通過 |
 | api/generate-image.js | 変更 | 既存通過 |
-| api/post-instagram.js | 変更 | 既存通過 |
 | api/post-bluesky.js | 変更 | 既存通過 |
+| api/post-instagram.js | 変更 | 既存通過 |
 | api/post-threads.js | 変更 | 既存通過 |
-| docs/diary-input.html | 変更 | - |
-| tests/generate-image.test.js | 変更 | 既存通過 |
+| tests/create-research.test.js | 変更 | - |
 
 ---
 
 ## 再開プロンプト
 
 ```
-前回のセッション（2026-03-17 16:10）の続きです。
+前回のセッション（2026-03-17 16:40）の続きです。
 
 ## 状況
 - Plan 1-2はコミット bcda663 で実装済み（pushed）
-- Plan 3（リサーチ投稿API）+ Plan 4（メモAPI）は実装完了、未コミット
-- Codex archレビューでblocking 3件検出→修正済み、全294テスト通過
-- codex-review iteration 2（diffレビュー）から再開が必要
+- Plan 3-4 + Codex修正(iteration 1)はコミット 859a384 で実装済み（pushed）
+- Codex修正(iteration 2)は最新コミットで実装済み（pushed）
+- codex-review: 3 iteration で ok: true 到達済み
+- 全295テスト通過
 
 ## 今回やりたいこと
-1. codex-reviewをiteration 2から再開し、ok: trueまで反復
-2. ok: true後にコミット
-3. 時間があればPlan 2 Phase A統合
+1. Plan 2 Phase A統合（generate-image.jsにキャラクター統合）
+2. Plan 2 Phase B-D（キャラクター完全統合）
 
 ## 参照
-- plans/handoff-2026-03-17-pm.md（この資料）
-- plans/idea-3-research-post.md
-- plans/idea-4-iphone-idea-capture.md
-- plans/idea-1-dino-diary-system.md
-- plans/idea-2-original-character-diary.md
+- plans/handoff-2026-03-17-pm.md（引き継ぎ資料）
+- plans/idea-2-original-character-diary.md（キャラクター日記計画）
+- plans/idea-1-dino-diary-system.md（恐竜日記計画）
 ```

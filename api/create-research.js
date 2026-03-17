@@ -11,7 +11,7 @@ import { verifyJwt } from './lib/jwt.js';
 //
 // セキュリティ機能:
 // 1. CORS設定（共通ヘルパー: api/lib/cors.js）
-// 2. JWT認証（X-Auth-Tokenヘッダー） + AUTH_TOKENフォールバック（移行期間）
+// 2. JWT認証（JWTのみ、AUTH_TOKENフォールバックなし）
 // 3. Upstash Redis永続レート制限（15req/日、IPベース、fail-closed）
 // 4. 入力検証（rawText最大10,000文字、category検証、topic検証）
 // 5. LLM出力スキーマ検証（型・長さ検証、YAMLエスケープ）
@@ -101,26 +101,26 @@ export default async function handler(req, res) {
     }
 
     // ===================================================================
-    // 4. JWT認証（AUTH_TOKENフォールバック付き移行期間）
+    // 4. JWT認証（JWTのみ、AUTH_TOKENフォールバックなし）
     // ===================================================================
 
     const authToken = req.headers['x-auth-token'];
     const JWT_SECRET = process.env.JWT_SECRET;
-    const LEGACY_AUTH_TOKEN = process.env.AUTH_TOKEN;
 
-    // JWT優先検証（JWT_SECRET設定時のみ、sub === 'diary-admin' で用途拘束）
-    const jwtPayload = (authToken && JWT_SECRET) ? verifyJwt(authToken, JWT_SECRET) : null;
+    if (!JWT_SECRET) {
+      console.error('JWT_SECRET環境変数が未設定');
+      return res.status(500).json({
+        error: 'サーバーの設定に問題があります。'
+      });
+    }
+
+    const jwtPayload = authToken ? verifyJwt(authToken, JWT_SECRET) : null;
     const jwtValid = jwtPayload && jwtPayload.sub === 'diary-admin';
 
     if (!jwtValid) {
-      // AUTH_TOKENフォールバック（移行期間）
-      if (LEGACY_AUTH_TOKEN && authToken === LEGACY_AUTH_TOKEN) {
-        console.warn('レガシー認証使用: AUTH_TOKENフォールバックで認証成功');
-      } else {
-        return res.status(401).json({
-          error: '認証に失敗しました。トークンが無効または期限切れです。'
-        });
-      }
+      return res.status(401).json({
+        error: '認証に失敗しました。トークンが無効または期限切れです。'
+      });
     }
 
     // ===================================================================

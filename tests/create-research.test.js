@@ -3,7 +3,7 @@
 //
 // テストシナリオ:
 // 1. CORS・HTTPメソッド検証
-// 2. JWT認証（JWT + AUTH_TOKENフォールバック）
+// 2. JWT認証（JWTのみ、AUTH_TOKENフォールバックなし）
 // 3. 入力バリデーション（rawText, category, topic）
 // 4. 環境変数チェック
 // 5. Upstash Redis レート制限（fail-closed）
@@ -247,14 +247,14 @@ describe('create-research API', () => {
       expect(res._status).toBe(401);
     });
 
-    it('AUTH_TOKENフォールバック → 処理続行', async () => {
+    it('AUTH_TOKEN単独では401（フォールバック廃止済み）', async () => {
       globalThis.fetch = createFullFlowFetchMock();
       const req = createMockReq({
         headers: { 'x-auth-token': 'legacy-auth-token' },
       });
       const res = createMockRes();
       await handler(req, res);
-      expect(res._status).toBe(200);
+      expect(res._status).toBe(401);
     });
   });
 
@@ -329,6 +329,18 @@ describe('create-research API', () => {
   // 4. 環境変数チェック
   // =================================================================
   describe('環境変数チェック', () => {
+    it('JWT_SECRET未設定で500', async () => {
+      delete process.env.JWT_SECRET;
+      globalThis.fetch = createFullFlowFetchMock();
+      vi.resetModules();
+      const mod = await import('../api/create-research.js');
+      const req = createMockReq();
+      const res = createMockRes();
+      await mod.default(req, res);
+      expect(res._status).toBe(500);
+      expect(res._json.error).toContain('設定に問題');
+    });
+
     it('CLAUDE_API_KEY未設定で500', async () => {
       delete process.env.CLAUDE_API_KEY;
       globalThis.fetch = createFullFlowFetchMock();

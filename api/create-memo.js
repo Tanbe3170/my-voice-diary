@@ -156,6 +156,7 @@ export default async function handler(req, res) {
     }
 
     if (rateCount === 1) {
+      // 初回: TTL設定（24時間）- fail-closed: TTL未設定なら500
       try {
         const expireRes = await fetch(`${UPSTASH_URL}/expire/${encodeURIComponent(rateKey)}/86400`, {
           headers: { 'Authorization': `Bearer ${UPSTASH_TOKEN}` },
@@ -163,9 +164,15 @@ export default async function handler(req, res) {
         });
         if (!expireRes.ok) {
           console.error('Upstash expire HTTPエラー:', expireRes.status);
+          return res.status(500).json({
+            error: 'サーバーの一時的なエラーです。しばらくしてから再度お試しください。'
+          });
         }
       } catch (expireError) {
         console.error('Upstash expire接続エラー:', expireError);
+        return res.status(500).json({
+          error: 'サーバーの一時的なエラーです。しばらくしてから再度お試しください。'
+        });
       }
     }
 
