@@ -12,9 +12,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Node.js (ES Modules) - Vercel Serverless Functions
 - Claude API (Anthropic) - 日記の口語→文語整形
 - DALL-E 3 (OpenAI) - 日記イメージ画像生成
+- sharp - Bluesky画像アップロード用圧縮（PNG→JPEG変換+リサイズ、唯一の本番依存）
 - GitHub API - ファイル保存（日記Markdown + 画像）
 - Upstash Redis - 永続レート制限（Serverless対応）
-- JWT (HS256) - API認証（Node.js crypto、外部依存ゼロ）
+- JWT (HS256) - API認証（Node.js crypto）
 - Vercel - ホスティング + Serverless Functions
 - GitHub Pages - 静的サイト閲覧
 - Web Speech API - ブラウザ音声認識
@@ -29,7 +30,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Phase 5: Instagram投稿（✅ 完了 - Instagram Graph API + 冪等性保証）
 - Phase 5.5: Bluesky + Threads投稿（✅ 完了 - AT Protocol + Threads API）
 
-**最新の変更（2026-02-22）:**
+**最新の変更（2026-03-17）:**
+- Bluesky画像自動圧縮（sharp導入、1MB超過時PNG→JPEG変換+リサイズ）
+- sharp: 唯一の本番依存パッケージ（Bluesky 1MBアップロード制限対応）
+
+**過去の変更（2026-02-22）:**
 - Phase 5.5: Bluesky自動投稿API（post-bluesky.js）
 - Phase 5.5: Threads自動投稿API（post-threads.js）
 - Bluesky AT Protocol（createSession→uploadBlob→createRecord）
@@ -61,7 +66,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### テスト実行
 
 ```bash
-# 全テスト実行（161テスト）
+# 全テスト実行（168テスト）
 npm test
 
 # 特定テストファイル
@@ -192,7 +197,7 @@ voice-diary/
 │   ├── create-diary-ratelimit.test.js  # レート制限テスト（12テスト）
 │   ├── generate-image.test.js  # 画像生成APIテスト（11テスト）
 │   ├── post-instagram.test.js  # Instagram投稿APIテスト（31テスト）
-│   ├── post-bluesky.test.js    # Bluesky投稿APIテスト（37テスト）
+│   ├── post-bluesky.test.js    # Bluesky投稿APIテスト（41テスト）
 │   └── post-threads.test.js    # Threads投稿APIテスト（40テスト）
 │
 ├── docs/                       # フロントエンド（Vercel静的配信）
@@ -376,8 +381,8 @@ export GITHUB_TOKEN="ghp_..."
 
 ---
 
-*最終更新: 2026年2月22日*
-*現在のフェーズ: Phase 5.5 完了（Bluesky + Threads投稿機能追加）*
+*最終更新: 2026年3月17日*
+*現在のフェーズ: Phase 5.5 完了（Bluesky + Threads投稿機能追加 + Bluesky画像圧縮）*
 
 # Plan Creation
 
