@@ -1,13 +1,38 @@
 // tests/generate-image.test.js
-// Phase 4 画像生成API のセキュリティテスト
+// Phase 4 画像生成API のセキュリティテスト + キャラクター統合テスト
 //
 // テストシナリオ:
-// 1. Upstash障害時に課金処理（DALL-E）へ進まないこと（fail-closed）
+// 1. Upstash障害時に画像生成へ進まないこと（fail-closed）
 // 2. 正常時、10回/日で429を返すこと
 // 3. 期限切れ/不正imageTokenで401を返すこと
+// 4. filePathパラメータ
+// 5. Base64プレビューレスポンス
+// 6. キャラクター画像生成（characterId指定・プロンプト合成・フォールバック）
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import crypto from 'crypto';
+
+// vi.hoisted でモック関数を定義（vi.mock ファクトリ内で参照可能にする）
+const { mockGenerateImageWithFallback } = vi.hoisted(() => ({
+  mockGenerateImageWithFallback: vi.fn(),
+}));
+
+const { mockLoadCharacter, mockComposeImagePrompt } = vi.hoisted(() => ({
+  mockLoadCharacter: vi.fn(),
+  mockComposeImagePrompt: vi.fn(),
+}));
+
+// image-backend をモック（@google/genai の依存も回避）
+vi.mock('../api/lib/image-backend.js', () => ({
+  generateImageWithFallback: mockGenerateImageWithFallback,
+  sanitizeError: (msg) => msg,
+}));
+
+// character.js をモック
+vi.mock('../api/lib/character.js', () => ({
+  loadCharacter: mockLoadCharacter,
+  composeImagePrompt: mockComposeImagePrompt,
+}));
 
 // テスト用の有効なHMACトークンを生成するヘルパー
 const IMAGE_TOKEN_SECRET = 'test-secret-key';
@@ -61,6 +86,7 @@ const baseEnv = {
   VERCEL_URL: 'my-voice-diary-xxx.vercel.app',
   IMAGE_TOKEN_SECRET,
   OPENAI_API_KEY: 'sk-test-key',
+  GOOGLE_API_KEY: 'test-google-key',
   GITHUB_TOKEN: 'ghp_test',
   GITHUB_OWNER: 'TestOwner',
   GITHUB_REPO: 'test-repo',
@@ -77,12 +103,23 @@ describe('generate-image API', () => {
     // 環境変数を設定
     Object.assign(process.env, baseEnv);
 
+    // モックをリセット
+    mockGenerateImageWithFallback.mockClear();
+    mockLoadCharacter.mockClear();
+    mockComposeImagePrompt.mockClear();
+
+    // デフォルトのモック動作設定
+    mockLoadCharacter.mockResolvedValue(null); // デフォルトはキャラクターなし
+    mockComposeImagePrompt.mockImplementation((prompt, char) => ({
+      prompt: char ? `composed: ${prompt}` : prompt,
+      negativePrompt: char ? 'negative' : '',
+    }));
+
     // fetch呼び出しを記録
     fetchCalls = [];
     originalFetch = globalThis.fetch;
 
     // モジュールキャッシュをクリアしてハンドラを再読み込み
-    // vitestのモジュールリセットで対応
     vi.resetModules();
     const mod = await import('../api/generate-image.js');
     handler = mod.default;
@@ -94,12 +131,10 @@ describe('generate-image API', () => {
   });
 
   // =================================================================
-  // テスト1: Upstash障害時にDALL-E呼び出しが行われないこと（fail-closed）
+  // テスト1: Upstash障害時に画像生成が行われないこと（fail-closed）
   // =================================================================
   describe('Upstash障害時のfail-closed', () => {
-    it('Upstash incr HTTPエラー時、500を返しOpenAI APIを呼び出さない', async () => {
-      let openaiCalled = false;
-
+    it('Upstash incr HTTPエラー時、500を返し画像生成を呼び出さない', async () => {
       globalThis.fetch = vi.fn(async (url) => {
         fetchCalls.push(url);
 
@@ -108,12 +143,6 @@ describe('generate-image API', () => {
           return { ok: false, status: 503, json: async () => ({}) };
         }
 
-        // OpenAI API（到達してはいけない）
-        if (url.includes('api.openai.com')) {
-          openaiCalled = true;
-          return { ok: true, json: async () => ({}) };
-        }
-
         return { ok: true, json: async () => ({}) };
       });
 
@@ -122,15 +151,10 @@ describe('generate-image API', () => {
       await handler(req, res);
 
       expect(res._status).toBe(500);
-      expect(openaiCalled).toBe(false);
-      // OpenAI URLが呼ばれていないことを確認
-      const openaiCalls = fetchCalls.filter(u => u.includes('api.openai.com'));
-      expect(openaiCalls).toHaveLength(0);
+      expect(mockGenerateImageWithFallback).not.toHaveBeenCalled();
     });
 
-    it('Upstash incr不正レスポンス（result=0）時、500を返しOpenAI APIを呼び出さない', async () => {
-      let openaiCalled = false;
-
+    it('Upstash incr不正レスポンス（result=0）時、500を返し画像生成を呼び出さない', async () => {
       globalThis.fetch = vi.fn(async (url) => {
         fetchCalls.push(url);
 
@@ -138,11 +162,6 @@ describe('generate-image API', () => {
           return { ok: true, json: async () => ({ result: 0 }) };
         }
 
-        if (url.includes('api.openai.com')) {
-          openaiCalled = true;
-          return { ok: true, json: async () => ({}) };
-        }
-
         return { ok: true, json: async () => ({}) };
       });
 
@@ -151,12 +170,10 @@ describe('generate-image API', () => {
       await handler(req, res);
 
       expect(res._status).toBe(500);
-      expect(openaiCalled).toBe(false);
+      expect(mockGenerateImageWithFallback).not.toHaveBeenCalled();
     });
 
-    it('Upstash接続エラー（fetch例外）時、500を返しOpenAI APIを呼び出さない', async () => {
-      let openaiCalled = false;
-
+    it('Upstash接続エラー（fetch例外）時、500を返し画像生成を呼び出さない', async () => {
       globalThis.fetch = vi.fn(async (url) => {
         fetchCalls.push(url);
 
@@ -164,11 +181,6 @@ describe('generate-image API', () => {
           throw new Error('Network error');
         }
 
-        if (url.includes('api.openai.com')) {
-          openaiCalled = true;
-          return { ok: true, json: async () => ({}) };
-        }
-
         return { ok: true, json: async () => ({}) };
       });
 
@@ -177,7 +189,7 @@ describe('generate-image API', () => {
       await handler(req, res);
 
       expect(res._status).toBe(500);
-      expect(openaiCalled).toBe(false);
+      expect(mockGenerateImageWithFallback).not.toHaveBeenCalled();
     });
   });
 
@@ -226,32 +238,29 @@ describe('generate-image API', () => {
           };
         }
 
-        // OpenAI DALL-E API
-        if (url.includes('api.openai.com')) {
-          return {
-            ok: true,
-            json: async () => ({
-              data: [{ b64_json: Buffer.from('fake-png').toString('base64') }],
-            }),
-          };
-        }
-
         // GitHub画像保存
-        if (url.includes('api.github.com') && url.includes('contents/images')) {
+        if (url.includes('api.github.com') && url.includes('contents/docs/images')) {
           return { ok: true, json: async () => ({ content: {} }) };
         }
 
         return { ok: true, json: async () => ({}) };
       });
 
+      // generateImageWithFallback の成功モック
+      mockGenerateImageWithFallback.mockResolvedValueOnce({
+        imageData: Buffer.from('fake-png'),
+        backend: 'dalle',
+        model: 'DALL-E 3',
+        modelId: 'dall-e-3',
+      });
+
       const req = createMockReq();
       const res = createMockRes();
       await handler(req, res);
 
-      // 200で正常完了し、OpenAI APIが呼ばれたことを確認
+      // 200で正常完了し、generateImageWithFallbackが呼ばれたことを確認
       expect(res._status).toBe(200);
-      const openaiCalls = fetchCalls.filter(u => u.includes('api.openai.com'));
-      expect(openaiCalls.length).toBeGreaterThanOrEqual(1);
+      expect(mockGenerateImageWithFallback).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -333,16 +342,17 @@ describe('generate-image API', () => {
           ).toString('base64');
           return { ok: true, json: async () => ({ content, sha: 'abc123' }) };
         }
-        if (url.includes('api.openai.com')) {
-          return {
-            ok: true,
-            json: async () => ({ data: [{ b64_json: Buffer.from('fake-png').toString('base64') }] }),
-          };
-        }
         if (url.includes('api.github.com') && url.includes('contents/docs/images')) {
           return { ok: true, json: async () => ({ content: {} }) };
         }
         return { ok: true, json: async () => ({}) };
+      });
+
+      mockGenerateImageWithFallback.mockResolvedValueOnce({
+        imageData: Buffer.from('fake-png'),
+        backend: 'dalle',
+        model: 'DALL-E 3',
+        modelId: 'dall-e-3',
       });
 
       const req = createMockReq({
@@ -395,16 +405,17 @@ describe('generate-image API', () => {
           ).toString('base64');
           return { ok: true, json: async () => ({ content, sha: 'abc123' }) };
         }
-        if (url.includes('api.openai.com')) {
-          return {
-            ok: true,
-            json: async () => ({ data: [{ b64_json: Buffer.from('fake-png').toString('base64') }] }),
-          };
-        }
         if (url.includes('api.github.com') && url.includes('contents/docs/images')) {
           return { ok: true, json: async () => ({ content: {} }) };
         }
         return { ok: true, json: async () => ({}) };
+      });
+
+      mockGenerateImageWithFallback.mockResolvedValueOnce({
+        imageData: Buffer.from('fake-png'),
+        backend: 'dalle',
+        model: 'DALL-E 3',
+        modelId: 'dall-e-3',
       });
 
       const req = createMockReq(); // filePath未指定
@@ -421,8 +432,8 @@ describe('generate-image API', () => {
   // テスト5: Base64プレビューレスポンス
   // =================================================================
   describe('Base64プレビューレスポンス', () => {
-    // 正常フローの共通fetchモック（小さい画像）
-    function createNormalFetchMock(imageData) {
+    // 正常フローの共通fetchモック（Upstash + GitHub APIのみ）
+    function createNormalFetchMock() {
       return vi.fn(async (url) => {
         if (url.includes('upstash') && url.includes('incr')) {
           return { ok: true, json: async () => ({ result: 1 }) };
@@ -437,12 +448,6 @@ describe('generate-image API', () => {
           ).toString('base64');
           return { ok: true, json: async () => ({ content, sha: 'abc123' }) };
         }
-        if (url.includes('api.openai.com')) {
-          return {
-            ok: true,
-            json: async () => ({ data: [{ b64_json: imageData }] }),
-          };
-        }
         if (url.includes('api.github.com') && url.includes('contents/docs/images')) {
           return { ok: true, json: async () => ({ content: {} }) };
         }
@@ -452,7 +457,13 @@ describe('generate-image API', () => {
 
     it('2.5MB未満の画像でimageBase64フィールドが含まれること', async () => {
       const smallBase64 = Buffer.from('small-fake-png').toString('base64');
-      globalThis.fetch = createNormalFetchMock(smallBase64);
+      globalThis.fetch = createNormalFetchMock();
+      mockGenerateImageWithFallback.mockResolvedValueOnce({
+        imageData: Buffer.from('small-fake-png'),
+        backend: 'dalle',
+        model: 'DALL-E 3',
+        modelId: 'dall-e-3',
+      });
 
       const req = createMockReq();
       const res = createMockRes();
@@ -464,9 +475,15 @@ describe('generate-image API', () => {
     });
 
     it('2.5MB以上の画像でimageBase64が省略されキャッシュバスター付きURLになること', async () => {
-      // 2.5MB超のBase64文字列を生成
-      const largeBase64 = 'A'.repeat(2_500_001);
-      globalThis.fetch = createNormalFetchMock(largeBase64);
+      // 2.5MB超のデータを生成
+      const largeBuffer = Buffer.alloc(2_000_000, 'A'); // 約2.67MB in base64
+      globalThis.fetch = createNormalFetchMock();
+      mockGenerateImageWithFallback.mockResolvedValueOnce({
+        imageData: largeBuffer,
+        backend: 'dalle',
+        model: 'DALL-E 3',
+        modelId: 'dall-e-3',
+      });
 
       const req = createMockReq();
       const res = createMockRes();
@@ -479,9 +496,16 @@ describe('generate-image API', () => {
     });
 
     it('ちょうど2,500,000文字の画像でimageBase64が省略されること（境界値）', async () => {
-      // 実装: imageBase64.length < 2_500_000 → 等号はフォールバック側
-      const boundaryBase64 = 'A'.repeat(2_500_000);
-      globalThis.fetch = createNormalFetchMock(boundaryBase64);
+      // 境界値: base64文字列がちょうど2,500,000文字になるバッファを作成
+      // base64エンコードは4/3倍なので、1,875,000バイト → 2,500,000文字
+      const boundaryBuffer = Buffer.alloc(1_875_000, 'B');
+      globalThis.fetch = createNormalFetchMock();
+      mockGenerateImageWithFallback.mockResolvedValueOnce({
+        imageData: boundaryBuffer,
+        backend: 'dalle',
+        model: 'DALL-E 3',
+        modelId: 'dall-e-3',
+      });
 
       const req = createMockReq();
       const res = createMockRes();
@@ -490,6 +514,191 @@ describe('generate-image API', () => {
       expect(res._status).toBe(200);
       expect(res._json.imageBase64).toBeUndefined();
       expect(res._json.imageUrl).toContain('?t=');
+    });
+  });
+
+  // =================================================================
+  // テスト6: キャラクター画像生成
+  // =================================================================
+  describe('キャラクター画像生成', () => {
+    // 正常フローの共通fetchモック（Upstash + GitHub APIのみ）
+    function createNormalFetchMock() {
+      return vi.fn(async (url) => {
+        if (url.includes('upstash') && url.includes('incr')) {
+          return { ok: true, json: async () => ({ result: 1 }) };
+        }
+        if (url.includes('upstash') && url.includes('expire')) {
+          return { ok: true, json: async () => ({ result: 1 }) };
+        }
+        if (url.includes('api.github.com') && url.includes('contents/diaries')) {
+          const content = Buffer.from(
+            '---\nimage_prompt: "A sunny day at the park"\n---\n# Test',
+            'utf-8'
+          ).toString('base64');
+          return { ok: true, json: async () => ({ content, sha: 'abc123' }) };
+        }
+        if (url.includes('api.github.com') && url.includes('contents/docs/images')) {
+          return { ok: true, json: async () => ({ content: {} }) };
+        }
+        return { ok: true, json: async () => ({}) };
+      });
+    }
+
+    it('characterId指定時にloadCharacterが呼ばれプロンプト合成されること', async () => {
+      const mockCharacter = {
+        id: 'dino',
+        name: '恐竜くん',
+        imageStyle: { basePrompt: 'cute dinosaur character' },
+      };
+      mockLoadCharacter.mockResolvedValueOnce(mockCharacter);
+      mockComposeImagePrompt.mockReturnValueOnce({
+        prompt: 'composed: A sunny day at the park with cute dinosaur character',
+        negativePrompt: 'realistic, photo',
+      });
+      mockGenerateImageWithFallback.mockResolvedValueOnce({
+        imageData: Buffer.from('fake-png'),
+        backend: 'imagen',
+        model: 'Imagen 3',
+        modelId: 'imagen-3.0-generate-002',
+      });
+
+      globalThis.fetch = createNormalFetchMock();
+
+      const req = createMockReq({
+        body: {
+          date: '2026-02-19',
+          imageToken: createValidToken('2026-02-19'),
+          characterId: 'dino',
+        },
+      });
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(200);
+      // loadCharacterが呼ばれたことを検証
+      expect(mockLoadCharacter).toHaveBeenCalledTimes(1);
+      expect(mockLoadCharacter).toHaveBeenCalledWith('dino', expect.objectContaining({
+        token: 'ghp_test',
+        owner: 'TestOwner',
+        repo: 'test-repo',
+      }));
+      // composeImagePromptが呼ばれたことを検証
+      expect(mockComposeImagePrompt).toHaveBeenCalledTimes(1);
+      expect(mockComposeImagePrompt).toHaveBeenCalledWith('A sunny day at the park', mockCharacter);
+      // generateImageWithFallbackが合成プロンプトで呼ばれたことを検証
+      expect(mockGenerateImageWithFallback).toHaveBeenCalledWith(
+        'composed: A sunny day at the park with cute dinosaur character',
+        'realistic, photo',
+      );
+      // レスポンスにcharacterIdが含まれること
+      expect(res._json.characterId).toBe('dino');
+    });
+
+    it('characterId未指定時にloadCharacterが呼ばれないこと（後方互換）', async () => {
+      mockGenerateImageWithFallback.mockResolvedValueOnce({
+        imageData: Buffer.from('fake-png'),
+        backend: 'dalle',
+        model: 'DALL-E 3',
+        modelId: 'dall-e-3',
+      });
+
+      globalThis.fetch = createNormalFetchMock();
+
+      const req = createMockReq(); // characterId未指定
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(200);
+      // loadCharacterが呼ばれていないことを検証
+      expect(mockLoadCharacter).not.toHaveBeenCalled();
+      // generateImageWithFallbackは呼ばれることを検証
+      expect(mockGenerateImageWithFallback).toHaveBeenCalledTimes(1);
+    });
+
+    it('キャラクターファイル不存在時にフォールバック（imagePromptそのまま使用）', async () => {
+      mockLoadCharacter.mockResolvedValueOnce(null); // キャラクター見つからない
+      mockGenerateImageWithFallback.mockResolvedValueOnce({
+        imageData: Buffer.from('fake-png'),
+        backend: 'dalle',
+        model: 'DALL-E 3',
+        modelId: 'dall-e-3',
+      });
+
+      globalThis.fetch = createNormalFetchMock();
+
+      const req = createMockReq({
+        body: {
+          date: '2026-02-19',
+          imageToken: createValidToken('2026-02-19'),
+          characterId: 'nonexistent',
+        },
+      });
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(200);
+      // loadCharacterは呼ばれるがnullを返す
+      expect(mockLoadCharacter).toHaveBeenCalledTimes(1);
+      // composeImagePromptが呼ばれていないことを検証
+      expect(mockComposeImagePrompt).not.toHaveBeenCalled();
+      // generateImageWithFallbackは元のimagePromptで呼ばれることを検証
+      expect(mockGenerateImageWithFallback).toHaveBeenCalledWith(
+        'A sunny day at the park',
+        '',
+      );
+    });
+
+    it('レスポンスにbackend/modelが含まれること', async () => {
+      mockGenerateImageWithFallback.mockResolvedValueOnce({
+        imageData: Buffer.from('fake-png'),
+        backend: 'imagen',
+        model: 'Imagen 3',
+        modelId: 'imagen-3.0-generate-002',
+      });
+
+      globalThis.fetch = createNormalFetchMock();
+
+      const req = createMockReq();
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(200);
+      expect(res._json.backend).toBe('imagen');
+      expect(res._json.model).toBe('Imagen 3');
+      expect(res._json.modelId).toBe('imagen-3.0-generate-002');
+    });
+
+    it('不正なcharacterId形式で400を返すこと', async () => {
+      globalThis.fetch = vi.fn(async (url) => {
+        if (url.includes('upstash') && url.includes('incr')) {
+          return { ok: true, json: async () => ({ result: 1 }) };
+        }
+        return { ok: true, json: async () => ({}) };
+      });
+
+      // パストラバーサル攻撃
+      const req1 = createMockReq({
+        body: {
+          date: '2026-02-19',
+          imageToken: createValidToken('2026-02-19'),
+          characterId: '../secret',
+        },
+      });
+      const res1 = createMockRes();
+      await handler(req1, res1);
+      expect(res1._status).toBe(400);
+
+      // 大文字（許可されない形式）
+      const req2 = createMockReq({
+        body: {
+          date: '2026-02-19',
+          imageToken: createValidToken('2026-02-19'),
+          characterId: 'UPPERCASE',
+        },
+      });
+      const res2 = createMockRes();
+      await handler(req2, res2);
+      expect(res2._status).toBe(400);
     });
   });
 });

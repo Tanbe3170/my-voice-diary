@@ -13,6 +13,8 @@
 import crypto from 'crypto';
 import { isIP } from 'net';
 import { handleCors } from './lib/cors.js';
+import { loadCharacter, composeImagePrompt } from './lib/character.js';
+import { generateImageWithFallback, sanitizeError } from './lib/image-backend.js';
 
 export default async function handler(req, res) {
   // ===================================================================
@@ -51,6 +53,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'サーバー設定エラー' });
     }
 
+    const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
     const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
     const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
     const GITHUB_OWNER = process.env.GITHUB_OWNER;
@@ -58,10 +61,14 @@ export default async function handler(req, res) {
     const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL;
     const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 
-    if (!OPENAI_API_KEY || !GITHUB_TOKEN || !GITHUB_OWNER || !GITHUB_REPO ||
+    if (!GOOGLE_API_KEY && !OPENAI_API_KEY) {
+      console.error('環境変数が未設定: GOOGLE_API_KEYまたはOPENAI_API_KEYのどちらかが必要です');
+      return res.status(500).json({ error: 'サーバーの設定に問題があります。' });
+    }
+
+    if (!GITHUB_TOKEN || !GITHUB_OWNER || !GITHUB_REPO ||
         !UPSTASH_URL || !UPSTASH_TOKEN) {
       console.error('環境変数が未設定:', {
-        OPENAI_API_KEY: !!OPENAI_API_KEY,
         GITHUB_TOKEN: !!GITHUB_TOKEN,
         GITHUB_OWNER: !!GITHUB_OWNER,
         GITHUB_REPO: !!GITHUB_REPO,
@@ -75,7 +82,7 @@ export default async function handler(req, res) {
     // 5. HMAC署名付きトークン検証（AUTH_TOKENは使用しない）
     // ===================================================================
 
-    const { date, imageToken, filePath } = req.body;
+    const { date, imageToken, filePath, characterId } = req.body;
 
     if (!date || !imageToken) {
       return res.status(400).json({ error: '必要なパラメータが不足しています。' });
@@ -106,6 +113,13 @@ export default async function handler(req, res) {
       }
       if (filePath.includes('..') || filePath.includes('//')) {
         return res.status(400).json({ error: 'ファイルパスの形式が不正です。' });
+      }
+    }
+
+    // characterIdバリデーション（任意パラメータ）
+    if (characterId !== undefined) {
+      if (typeof characterId !== 'string' || !/^[a-z0-9-]{1,30}$/.test(characterId)) {
+        return res.status(400).json({ error: 'キャラクターIDの形式が不正です。' });
       }
     }
 
@@ -247,33 +261,34 @@ export default async function handler(req, res) {
       .replace(/\\\\/g, '\\');
 
     // ===================================================================
-    // 8. DALL-E 3 API呼び出し
+    // 7.5. キャラクター設定読み込み（任意）
     // ===================================================================
 
-    const dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'dall-e-3',
-        prompt: imagePrompt,
-        n: 1,
-        size: '1024x1024',
-        quality: 'standard',
-        response_format: 'b64_json'
-      })
-    });
+    let composedPrompt = imagePrompt;
+    let negativePrompt = '';
+    let loadedCharacterId = null;
 
-    if (!dalleResponse.ok) {
-      const dalleError = await dalleResponse.json();
-      console.error('DALL-E 3 APIエラー:', dalleError);
-      throw new Error('画像の生成に失敗しました。');
+    if (characterId) {
+      const character = await loadCharacter(characterId, {
+        token: GITHUB_TOKEN,
+        owner: GITHUB_OWNER,
+        repo: GITHUB_REPO,
+      });
+      if (character) {
+        const composed = composeImagePrompt(imagePrompt, character);
+        composedPrompt = composed.prompt;
+        negativePrompt = composed.negativePrompt;
+        loadedCharacterId = characterId;
+      }
+      // キャラクター読み込み失敗時はimagePromptをそのまま使用（fail-open）
     }
 
-    const dalleData = await dalleResponse.json();
-    const imageBase64 = dalleData.data[0].b64_json;
+    // ===================================================================
+    // 8. 画像生成（フォールバックチェーン: NB2 → NBpro → DALL-E 3）
+    // ===================================================================
+
+    const { imageData, backend, model, modelId } = await generateImageWithFallback(composedPrompt, negativePrompt);
+    const imageBase64 = imageData.toString('base64');
 
     // ===================================================================
     // 9. GitHub Contents APIで画像を保存
@@ -344,8 +359,14 @@ export default async function handler(req, res) {
       success: true,
       imageUrl,
       imagePath,
-      githubUrl: `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/blob/main/${imagePath}`
+      githubUrl: `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/blob/main/${imagePath}`,
+      backend,
+      model,
+      modelId,
     };
+    if (loadedCharacterId) {
+      responseBody.characterId = loadedCharacterId;
+    }
 
     if (imageBase64.length < MAX_BASE64_SIZE) {
       responseBody.imageBase64 = imageBase64;
