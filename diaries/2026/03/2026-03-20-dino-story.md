@@ -1,31 +1,32 @@
 ---
-title: "正解なんてなくてもいい"
+title: "試行錯誤の空中散歩"
 date: 2026-03-20
-tags: ["#恐竜日記", "#DinoWorld", "#ケッツの空中散歩", "#翼竜の哲学", "#共存生活"]
-image_prompt: "A friendly cartoon Quetzalcoatlus pterosaur with large wings soaring gently above a modern city street, looking down at a human sitting at an outdoor cafe below. The pterosaur has kind, curious eyes and a warm expression. Modern buildings, cars, and people are visible in the urban scene below, with the giant flying reptile peacefully coexisting in the contemporary world. Soft afternoon lighting, detailed feathers and wing membranes, whimsical and heartwarming atmosphere."
+tags: ["#恐竜日記", "#DinoWorld", "#ケッツの日常", "#翼竜ライフ", "#試行錯誤"]
+image_prompt: "A cheerful cartoon Quetzalcoatlus pterosaur with deformed cute features flying above a modern city street, thick black outlines, flat illustration style. The pterosaur has a friendly expression and is looking down at busy humans walking below. Modern buildings and traffic lights are visible in the background. The scene shows morning light with soft pastel colors. The pterosaur's wings are spread wide as it glides through the urban landscape, representing a moment of discovery and freedom."
+image_style: "illustration"
 mode: "dino-story"
 ---
 
-# 正解なんてなくてもいい
+# 試行錯誤の空中散歩
 
 ## 📅 2026-03-20
 
 ### 📖 サマリー
 
-人間たちを見ていて気づいた大切なこと
-完璧な答えを探すより行動が大事なんだ
-空から学んだ人生の飛び方を教えてもらった
+完璧な答えを探すより行動が大切だと気づいた
+人間たちを観察しながら飛行ルートを修正中
+失敗から学ぶ方がボクには合っているみたい
 
 ---
 
-今日は久しぶりに街の上空をゆっくりと旋回していた。下を見下ろしていると、いつものカフェのテラスで悩んでいる人間がいるのが見えたんだ。
+今日は朝から街の上空を飛び回りながら、ずっと考えていたことがある。ボクはいつも「完璧な飛行ルート」を見つけようと一生懸命地図とにらめっこしていたのだけれど、どうやら正解がないことの方が多いのかもしれないんだ。
 
-最近ボクも同じようなことで悩んでいた。どの気流に乗れば一番効率よく飛べるのか、どのルートが正解なのか、一生懸命に考えていたんだよね。でも今日、その人間を見ていて気がついたんだ。正解がないことのほうが多いのかもしれないって。
+人間たちの通勤ラッシュを避けて、建設中のビルを迂回して、さらには同族のプテラノドン・サリーちゃんのお気に入りスポットも考慮して…なんて完璧を求めていたら、結局午前中が終わってしまった。
 
-ボクたち翼竜は本能で飛んでいるように見えるけれど、実は毎日が試行錯誤の連続なんだ。風向きは変わるし、気温も違う。完璧な飛行なんて存在しないんだよね。まず翼を広げて飛び立ち、風を感じ、軌道を修正していく。このアプローチのほうが向いているのかもしれない。
+そこでふと思ったんだ。まず飛んでみて、気付いて、修正していく。このアプローチの方がボクには向いているのかもしれない。実際、適当に飛び出してみたら、新しいサーマル（上昇気流）を発見できたし、素敵なカフェで翼を休めることもできた。店主の人間のおばあさんが「あら、ケッツちゃん今日は早いのね」なんて声をかけてくれて、いつものフルーツをもらえたんだよ。
 
-人間も翼竜も、生きることに正解なんてないんだな。大切なのは空に向かって羽ばたく勇気なのかもしれないよ。
+考えすぎるより、まずは翼を広げてみる。それがボク流なんだなあ。
 
 ---
 
-**Tags:** #恐竜日記 #DinoWorld #ケッツの空中散歩 #翼竜の哲学 #共存生活
+**Tags:** #恐竜日記 #DinoWorld #ケッツの日常 #翼竜ライフ #試行錯誤
