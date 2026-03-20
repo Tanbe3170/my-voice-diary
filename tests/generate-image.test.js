@@ -36,12 +36,14 @@ vi.mock('../api/lib/character.js', () => ({
 
 // テスト用の有効なHMACトークンを生成するヘルパー
 const IMAGE_TOKEN_SECRET = 'test-secret-key';
-function createValidToken(date, filePath) {
+function createValidToken(date, filePath, characterId, mode = 'normal') {
   const timestamp = Date.now();
-  // filePathが指定されている場合は署名に含める（api側と一致させる）
-  const payload = filePath
-    ? `${date}:${filePath}:${timestamp}`
-    : `${date}:${timestamp}`;
+  // filePath + characterId + modeを署名に含める（api側と一致させる）
+  const signedCharacterId = characterId || '';
+  const payloadParts = [date];
+  if (filePath) payloadParts.push(filePath);
+  payloadParts.push(signedCharacterId, mode, String(timestamp));
+  const payload = payloadParts.join(':');
   const hmac = crypto.createHmac('sha256', IMAGE_TOKEN_SECRET)
     .update(payload).digest('hex');
   return `${timestamp}:${hmac}`;
@@ -272,7 +274,7 @@ describe('generate-image API', () => {
       // 6分前のタイムスタンプでトークン生成
       const expiredTs = Date.now() - 6 * 60 * 1000;
       const date = '2026-02-19';
-      const payload = `${date}:${expiredTs}`;
+      const payload = `${date}::normal:${expiredTs}`;
       const hmac = crypto.createHmac('sha256', IMAGE_TOKEN_SECRET)
         .update(payload).digest('hex');
       const expiredToken = `${expiredTs}:${hmac}`;
@@ -567,8 +569,9 @@ describe('generate-image API', () => {
       const req = createMockReq({
         body: {
           date: '2026-02-19',
-          imageToken: createValidToken('2026-02-19'),
+          imageToken: createValidToken('2026-02-19', undefined, 'dino', 'dino-story'),
           characterId: 'dino',
+          mode: 'dino-story',
         },
       });
       const res = createMockRes();
@@ -629,8 +632,9 @@ describe('generate-image API', () => {
       const req = createMockReq({
         body: {
           date: '2026-02-19',
-          imageToken: createValidToken('2026-02-19'),
+          imageToken: createValidToken('2026-02-19', undefined, 'nonexistent', 'dino-story'),
           characterId: 'nonexistent',
+          mode: 'dino-story',
         },
       });
       const res = createMockRes();
@@ -666,6 +670,99 @@ describe('generate-image API', () => {
       expect(res._json.backend).toBe('imagen');
       expect(res._json.model).toBe('Imagen 3');
       expect(res._json.modelId).toBe('imagen-3.0-generate-002');
+    });
+
+    it('characterId指定時にmode=normalで400を返す', async () => {
+      globalThis.fetch = vi.fn(async (url) => {
+        if (url.includes('upstash') && url.includes('incr')) {
+          return { ok: true, json: async () => ({ result: 1 }) };
+        }
+        return { ok: true, json: async () => ({}) };
+      });
+
+      const req = createMockReq({
+        body: {
+          date: '2026-02-19',
+          imageToken: createValidToken('2026-02-19', undefined, 'quetz-default', 'normal'),
+          characterId: 'quetz-default',
+          mode: 'normal',
+        },
+      });
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(400);
+      expect(res._json.error).toContain('dino-story');
+    });
+
+    it('mode改ざん（署名と不一致）で401を返す', async () => {
+      globalThis.fetch = vi.fn(async (url) => {
+        if (url.includes('upstash') && url.includes('incr')) {
+          return { ok: true, json: async () => ({ result: 1 }) };
+        }
+        return { ok: true, json: async () => ({}) };
+      });
+
+      // トークンはmode='dino-story'で署名
+      const req = createMockReq({
+        body: {
+          date: '2026-02-19',
+          imageToken: createValidToken('2026-02-19', undefined, '', 'dino-story'),
+          // リクエストではmode='normal'を送信（改ざん）
+          mode: 'normal',
+        },
+      });
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(401);
+      expect(res._json.error).toContain('認証');
+    });
+
+    it('characterId改ざん（署名と不一致）で401を返す', async () => {
+      globalThis.fetch = vi.fn(async (url) => {
+        if (url.includes('upstash') && url.includes('incr')) {
+          return { ok: true, json: async () => ({ result: 1 }) };
+        }
+        return { ok: true, json: async () => ({}) };
+      });
+
+      // トークンはcharacterId='quetz-default'で署名
+      const req = createMockReq({
+        body: {
+          date: '2026-02-19',
+          imageToken: createValidToken('2026-02-19', undefined, 'quetz-default', 'dino-story'),
+          characterId: 'other-char',
+          mode: 'dino-story',
+        },
+      });
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(401);
+      expect(res._json.error).toContain('認証');
+    });
+
+    it('不正なmode値で400を返すこと', async () => {
+      globalThis.fetch = vi.fn(async (url) => {
+        if (url.includes('upstash') && url.includes('incr')) {
+          return { ok: true, json: async () => ({ result: 1 }) };
+        }
+        return { ok: true, json: async () => ({}) };
+      });
+
+      const req = createMockReq({
+        body: {
+          date: '2026-02-19',
+          imageToken: createValidToken('2026-02-19'),
+          mode: 'invalid-mode',
+        },
+      });
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(400);
+      expect(res._json.error).toContain('モード');
     });
 
     it('不正なcharacterId形式で400を返すこと', async () => {

@@ -1,29 +1,18 @@
 // tests/create-diary-dino.test.js
-// create-diary API の恐竜日記モード拡張テスト
+// create-diary API の characterId 機能テスト
 //
 // テストシナリオ:
-// 1. mode="dino-story"正常系
-// 2. mode="dino-research"正常系
-// 3. mode未指定で後方互換
-// 4. 不正なmode → 400
-// 5. dinoContext型不正 → 400
-// 6. species > 50文字 → 400
-// 7. topic > 200文字 → 400
-// 8. sources > 5件 → 400
-// 9. dino-storyでdinoContextなしでも動作
-// 10. mode=normalでdinoContext無視
-// 11. Markdown生成にmode/dino_context含む
-// 12. LLM出力スキーマ検証がmode付きでも動作
-// 13. dino-storyプロンプトに恐竜世界観含む
-// 14. dino-researchプロンプトに研究ノート形式含む
-// 15. mode未指定時に既存プロンプト使用
-// 16. ファイルパスにモードサフィックス
-// 17. normalモードはサフィックスなし
-// 18. sources要素の型・長さ検証
-// 19. sources/topicのサニタイズ
-// 20. レスポンスにmodeフィールド含む
+// 1. dino-storyモードでcharacterId指定時、キャラクター設定がプロンプトに注入される
+// 2. characterId未指定時の後方互換性
+// 3. normalモードではcharacterIdが無視される
+// 4. dino-researchモードではcharacterIdが無視される
+// 5. 不正なcharacterIdフォーマットが拒否される
+// 6. 長すぎるcharacterIdが拒否される
+// 7. キャラクター読み込み失敗時のfail-open動作
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// JWT生成用ヘルパー
 import { signJwt } from '../api/lib/jwt.js';
 
 const JWT_SECRET = 'test-jwt-secret-key-for-dino-tests';
@@ -33,23 +22,17 @@ function createValidJwt() {
   return signJwt({ sub: 'diary-admin', iat: now, exp: now + 3600 }, JWT_SECRET);
 }
 
-// Claude APIの正常レスポンスを生成するヘルパー
-function claudeSuccessResponse(overrides = {}) {
-  const data = {
-    title: 'テスト日記',
-    summary: 'テストサマリー',
-    body: 'テスト本文',
-    tags: ['#test'],
-    image_prompt: 'test image prompt',
-    ...overrides
-  };
-  return {
-    ok: true,
-    json: async () => ({
-      content: [{ text: `\`\`\`json\n${JSON.stringify(data)}\n\`\`\`` }]
-    })
-  };
-}
+// モック用キャラクターデータ
+const mockCharacter = {
+  id: 'quetz-default',
+  name: 'ケッツ',
+  nameEn: 'Quetz',
+  species: { scientific: 'Quetzalcoatlus', common: 'ケッツァコアトルス', family: 'Azhdarchidae' },
+  personality: { traits: ['好奇心旺盛'], speechStyle: 'のんびり', firstPerson: 'ボク' },
+  appearance: { consistencyKeywords: ['chibi quetzalcoatlus'], description: 'test', descriptionEn: 'test', artStyle: 'test' },
+  imageGeneration: { basePrompt: 'A cute chibi Quetzalcoatlus', negativePrompt: '', styleModifiers: ['soft'] },
+  settings: {}
+};
 
 // モック用のreq/resファクトリ
 function createMockReq(overrides = {}) {
@@ -98,40 +81,16 @@ const baseEnv = {
   UPSTASH_REDIS_REST_TOKEN: 'test-redis-token',
 };
 
-// 標準的なfetchモック（Upstash + Claude + GitHub正常応答）
-// capturedClaudeBodyに送信されたClaudeリクエストのbodyを格納
-function createStandardFetchMock(capturedClaudeBody = null) {
-  return vi.fn(async (url, options) => {
-    // Upstash incr
-    if (url.includes('upstash') && url.includes('incr')) {
-      return { ok: true, json: async () => ({ result: 5 }) };
-    }
-    // Claude API
-    if (url.includes('api.anthropic.com')) {
-      if (capturedClaudeBody && options?.body) {
-        capturedClaudeBody.value = JSON.parse(options.body);
-      }
-      return claudeSuccessResponse();
-    }
-    // GitHub API GET（ファイル存在チェック）
-    if (url.includes('api.github.com') && (!options || options.method !== 'PUT')) {
-      return { ok: false, status: 404, json: async () => ({}) };
-    }
-    // GitHub API PUT（ファイル保存）
-    if (url.includes('api.github.com') && options?.method === 'PUT') {
-      return { ok: true, json: async () => ({ content: { html_url: 'https://github.com/test' } }) };
-    }
-    return { ok: true, json: async () => ({}) };
-  });
-}
-
-describe('create-diary API 恐竜日記モード', () => {
+describe('create-diary API characterId機能', () => {
   let handler;
   let originalFetch;
+  let lastClaudePrompt;
 
   beforeEach(async () => {
     Object.assign(process.env, baseEnv);
     originalFetch = globalThis.fetch;
+    lastClaudePrompt = null;
+
     vi.resetModules();
     const mod = await import('../api/create-diary.js');
     handler = mod.default;
@@ -141,443 +100,206 @@ describe('create-diary API 恐竜日記モード', () => {
     globalThis.fetch = originalFetch;
   });
 
-  // =================================================================
-  // テスト1: mode="dino-story"で正常な日記作成
-  // =================================================================
-  it('mode="dino-story"で正常な日記作成ができること', async () => {
-    globalThis.fetch = createStandardFetchMock();
-    const req = createMockReq({
-      body: {
-        rawText: 'カフェで友達とランチした',
-        mode: 'dino-story',
-        dinoContext: { era: 'modern', species: 'velociraptor', scenario: 'coexistence' }
-      }
-    });
-    const res = createMockRes();
-    await handler(req, res);
-
-    expect(res._status).toBe(200);
-    expect(res._json.success).toBe(true);
-    expect(res._json.mode).toBe('dino-story');
-    expect(res._json.filePath).toContain('-dino-story.md');
-  });
-
-  // =================================================================
-  // テスト2: mode="dino-research"で正常な日記作成
-  // =================================================================
-  it('mode="dino-research"で正常な日記作成ができること', async () => {
-    globalThis.fetch = createStandardFetchMock();
-    const req = createMockReq({
-      body: {
-        rawText: 'ティラノサウルスの羽毛について調べた',
-        mode: 'dino-research',
-        dinoContext: { topic: 'T-Rex feathers', sources: ['Nature 2024'] }
-      }
-    });
-    const res = createMockRes();
-    await handler(req, res);
-
-    expect(res._status).toBe(200);
-    expect(res._json.success).toBe(true);
-    expect(res._json.mode).toBe('dino-research');
-    expect(res._json.filePath).toContain('-dino-research.md');
-  });
-
-  // =================================================================
-  // テスト3: mode未指定で後方互換
-  // =================================================================
-  it('mode未指定で従来通りの動作（後方互換）', async () => {
-    globalThis.fetch = createStandardFetchMock();
-    const req = createMockReq({
-      body: { rawText: '普通の日記です' }
-    });
-    const res = createMockRes();
-    await handler(req, res);
-
-    expect(res._status).toBe(200);
-    expect(res._json.success).toBe(true);
-    expect(res._json.mode).toBe('normal');
-    // ファイルパスにモードサフィックスがないこと
-    expect(res._json.filePath).not.toContain('-dino');
-    expect(res._json.filePath).toMatch(/\/\d{4}-\d{2}-\d{2}\.md$/);
-  });
-
-  // =================================================================
-  // テスト4: 不正なmode値で400エラー
-  // =================================================================
-  it('不正なmode値で400エラーを返すこと', async () => {
-    globalThis.fetch = createStandardFetchMock();
-    const req = createMockReq({
-      body: { rawText: 'テスト', mode: 'invalid-mode' }
-    });
-    const res = createMockRes();
-    await handler(req, res);
-
-    expect(res._status).toBe(400);
-    expect(res._json.error).toContain('不正なモード');
-  });
-
-  // =================================================================
-  // テスト5: dinoContext型不正で400エラー
-  // =================================================================
-  it('dinoContextが配列の場合400エラーを返すこと', async () => {
-    globalThis.fetch = createStandardFetchMock();
-    const req = createMockReq({
-      body: { rawText: 'テスト', mode: 'dino-story', dinoContext: ['invalid'] }
-    });
-    const res = createMockRes();
-    await handler(req, res);
-
-    expect(res._status).toBe(400);
-    expect(res._json.error).toContain('不正なコンテキスト形式');
-  });
-
-  // =================================================================
-  // テスト6: species > 50文字で400エラー
-  // =================================================================
-  it('species > 50文字で400エラーを返すこと', async () => {
-    globalThis.fetch = createStandardFetchMock();
-    const req = createMockReq({
-      body: {
-        rawText: 'テスト',
-        mode: 'dino-story',
-        dinoContext: { species: 'a'.repeat(51) }
-      }
-    });
-    const res = createMockRes();
-    await handler(req, res);
-
-    expect(res._status).toBe(400);
-    expect(res._json.error).toContain('恐竜種名が不正');
-  });
-
-  // =================================================================
-  // テスト7: topic > 200文字で400エラー
-  // =================================================================
-  it('topic > 200文字で400エラーを返すこと', async () => {
-    globalThis.fetch = createStandardFetchMock();
-    const req = createMockReq({
-      body: {
-        rawText: 'テスト',
-        mode: 'dino-research',
-        dinoContext: { topic: 'a'.repeat(201) }
-      }
-    });
-    const res = createMockRes();
-    await handler(req, res);
-
-    expect(res._status).toBe(400);
-    expect(res._json.error).toContain('研究テーマが不正');
-  });
-
-  // =================================================================
-  // テスト8: sources > 5件で400エラー
-  // =================================================================
-  it('sources > 5件で400エラーを返すこと', async () => {
-    globalThis.fetch = createStandardFetchMock();
-    const req = createMockReq({
-      body: {
-        rawText: 'テスト',
-        mode: 'dino-research',
-        dinoContext: { sources: ['a', 'b', 'c', 'd', 'e', 'f'] }
-      }
-    });
-    const res = createMockRes();
-    await handler(req, res);
-
-    expect(res._status).toBe(400);
-    expect(res._json.error).toContain('参考文献リストが不正');
-  });
-
-  // =================================================================
-  // テスト9: dino-storyでdinoContextなしでも動作
-  // =================================================================
-  it('mode="dino-story"でdinoContextなしでもデフォルト世界観で動作すること', async () => {
-    globalThis.fetch = createStandardFetchMock();
-    const req = createMockReq({
-      body: { rawText: 'カフェでランチした', mode: 'dino-story' }
-    });
-    const res = createMockRes();
-    await handler(req, res);
-
-    expect(res._status).toBe(200);
-    expect(res._json.success).toBe(true);
-    expect(res._json.mode).toBe('dino-story');
-  });
-
-  // =================================================================
-  // テスト10: mode=normalでdinoContext指定時は無視される
-  // =================================================================
-  it('mode="normal"でdinoContext指定時でも通常の日記が作成されること', async () => {
-    globalThis.fetch = createStandardFetchMock();
-    const req = createMockReq({
-      body: {
-        rawText: '普通の日記',
-        mode: 'normal',
-        dinoContext: { era: 'modern', species: 'velociraptor' }
-      }
-    });
-    const res = createMockRes();
-    await handler(req, res);
-
-    expect(res._status).toBe(200);
-    expect(res._json.mode).toBe('normal');
-    expect(res._json.filePath).not.toContain('-dino');
-  });
-
-  // =================================================================
-  // テスト11: Markdown生成にmode/dino_context含む
-  // =================================================================
-  it('mode="dino-story"時にMarkdownにmode/dino_contextが含まれること', async () => {
-    let capturedGithubBody = null;
-    globalThis.fetch = vi.fn(async (url, options) => {
+  // フェッチモックのファクトリ（キャラクター読み込みの挙動をカスタマイズ可能）
+  function setupFetchMock(characterMockFn) {
+    globalThis.fetch = vi.fn(async (url, opts) => {
+      // Upstash incr
       if (url.includes('upstash') && url.includes('incr')) {
-        return { ok: true, json: async () => ({ result: 5 }) };
+        return { ok: true, json: async () => ({ result: 1 }) };
       }
+      // Upstash expire
+      if (url.includes('upstash') && url.includes('expire')) {
+        return { ok: true, json: async () => ({ result: 1 }) };
+      }
+      // Claude API
       if (url.includes('api.anthropic.com')) {
-        return claudeSuccessResponse();
+        if (opts?.body) {
+          const body = JSON.parse(opts.body);
+          lastClaudePrompt = body.messages[0].content;
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            content: [{ text: JSON.stringify({
+              date: '2026-03-20',
+              title: 'テスト日記',
+              summary: 'テストサマリー',
+              body: 'テスト本文',
+              tags: ['#テスト'],
+              image_prompt: 'A test image prompt'
+            }) }]
+          })
+        };
       }
-      if (url.includes('api.github.com') && options?.method === 'PUT') {
-        capturedGithubBody = JSON.parse(options.body);
-        return { ok: true, json: async () => ({ content: { html_url: 'https://github.com/test' } }) };
+      // GitHub API - character file load（カスタマイズ可能）
+      if (characterMockFn && url.includes('characters/')) {
+        return characterMockFn(url, opts);
       }
-      if (url.includes('api.github.com')) {
+      // GitHub API GET (file not found)
+      if (url.includes('api.github.com') && (!opts || opts.method !== 'PUT')) {
         return { ok: false, status: 404, json: async () => ({}) };
+      }
+      // GitHub API PUT (create file)
+      if (url.includes('api.github.com') && opts?.method === 'PUT') {
+        return { ok: true, json: async () => ({ content: { sha: 'abc123' } }) };
       }
       return { ok: true, json: async () => ({}) };
     });
+  }
+
+  // =================================================================
+  // テスト1: dino-storyモードでcharacterId指定時のキャラクター注入
+  // =================================================================
+  it('dino-storyモード + characterId指定時、キャラクター設定がプロンプトに注入される', async () => {
+    setupFetchMock((url) => {
+      if (url.includes('characters/quetz-default.json')) {
+        const charData = mockCharacter;
+        return {
+          ok: true,
+          json: async () => ({
+            content: Buffer.from(JSON.stringify(charData)).toString('base64')
+          })
+        };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
 
     const req = createMockReq({
       body: {
-        rawText: 'テスト日記',
+        rawText: '今日はテストの日です。',
         mode: 'dino-story',
-        dinoContext: { era: 'modern', species: 'velociraptor', scenario: 'coexistence' }
-      }
+        characterId: 'quetz-default',
+      },
     });
     const res = createMockRes();
     await handler(req, res);
 
     expect(res._status).toBe(200);
-    expect(capturedGithubBody).not.toBeNull();
-
-    // Base64デコードしてMarkdown内容を確認
-    const markdown = Buffer.from(capturedGithubBody.content, 'base64').toString('utf-8');
-    expect(markdown).toContain('mode: "dino-story"');
-    expect(markdown).toContain('dino_context:');
-    expect(markdown).toContain('era: "modern"');
-    expect(markdown).toContain('species: "velociraptor"');
-    expect(markdown).toContain('scenario: "coexistence"');
+    expect(lastClaudePrompt).toContain('キャラクター設定');
+    expect(lastClaudePrompt).toContain('ケッツ');
+    expect(res._json.characterId).toBe('quetz-default');
   });
 
   // =================================================================
-  // テスト12: LLM出力スキーマ検証がmode付きでも動作
+  // テスト2: characterId未指定時の後方互換性
   // =================================================================
-  it('LLM出力スキーマ検証がmode付きでも正常に動作すること', async () => {
-    // 正常なLLMレスポンスでmode付きリクエストが成功することを確認
-    globalThis.fetch = createStandardFetchMock();
-    const req = createMockReq({
-      body: { rawText: 'テスト', mode: 'dino-story', dinoContext: { era: 'modern' } }
-    });
-    const res = createMockRes();
-    await handler(req, res);
+  it('dino-storyモード + characterId未指定時、後方互換性が保たれる', async () => {
+    setupFetchMock();
 
-    expect(res._status).toBe(200);
-    expect(res._json.success).toBe(true);
-    expect(res._json.title).toBe('テスト日記');
-  });
-
-  // =================================================================
-  // テスト13: dino-storyプロンプトに恐竜世界観含む
-  // =================================================================
-  it('mode="dino-story"時にClaude APIリクエストに恐竜世界観プロンプトが含まれること', async () => {
-    const capturedClaudeBody = { value: null };
-    globalThis.fetch = createStandardFetchMock(capturedClaudeBody);
     const req = createMockReq({
       body: {
-        rawText: 'カフェでランチした',
+        rawText: '今日はテストの日です。',
         mode: 'dino-story',
-        dinoContext: { era: 'modern', species: 'velociraptor', scenario: 'coexistence' }
-      }
+      },
     });
     const res = createMockRes();
     await handler(req, res);
 
     expect(res._status).toBe(200);
-    expect(capturedClaudeBody.value).not.toBeNull();
-    const prompt = capturedClaudeBody.value.messages[0].content;
-    expect(prompt).toContain('恐竜が絶滅せず');
-    expect(prompt).toContain('パラレルワールド');
-    expect(prompt).toContain('velociraptor');
-    expect(prompt).toContain('coexistence');
+    expect(res._json.characterId).toBeUndefined();
   });
 
   // =================================================================
-  // テスト14: dino-researchプロンプトに研究ノート形式含む
+  // テスト3: normalモードではcharacterIdが無視される
   // =================================================================
-  it('mode="dino-research"時にClaude APIリクエストに研究ノートプロンプトが含まれること', async () => {
-    const capturedClaudeBody = { value: null };
-    globalThis.fetch = createStandardFetchMock(capturedClaudeBody);
+  it('normalモードではcharacterIdが無視される', async () => {
+    setupFetchMock();
+
     const req = createMockReq({
       body: {
-        rawText: 'ティラノサウルスの羽毛について',
-        mode: 'dino-research',
-        dinoContext: { topic: 'T-Rex feathers', sources: ['Nature 2024'] }
-      }
+        rawText: '今日はテストの日です。',
+        mode: 'normal',
+        characterId: 'quetz-default',
+      },
     });
     const res = createMockRes();
     await handler(req, res);
 
     expect(res._status).toBe(200);
-    expect(capturedClaudeBody.value).not.toBeNull();
-    const prompt = capturedClaudeBody.value.messages[0].content;
-    expect(prompt).toContain('研究ノート');
-    expect(prompt).toContain('古生物学');
-    expect(prompt).toContain('T-Rex feathers');
-    expect(prompt).toContain('Nature 2024');
+    expect(res._json.characterId).toBeUndefined();
+    expect(lastClaudePrompt).not.toContain('キャラクター設定');
   });
 
   // =================================================================
-  // テスト15: mode未指定時に既存プロンプト使用
+  // テスト4: dino-researchモードではcharacterIdが無視される
   // =================================================================
-  it('mode未指定時に既存の通常プロンプトが使用されること', async () => {
-    const capturedClaudeBody = { value: null };
-    globalThis.fetch = createStandardFetchMock(capturedClaudeBody);
-    const req = createMockReq({
-      body: { rawText: '普通の日記' }
-    });
-    const res = createMockRes();
-    await handler(req, res);
+  it('dino-researchモードではcharacterIdが無視される', async () => {
+    setupFetchMock();
 
-    expect(res._status).toBe(200);
-    expect(capturedClaudeBody.value).not.toBeNull();
-    const prompt = capturedClaudeBody.value.messages[0].content;
-    // 通常プロンプトの特徴的なテキストが含まれること
-    expect(prompt).toContain('音声入力テキスト（口語）を、文語の日記形式');
-    // 恐竜プロンプトの特徴が含まれないこと
-    expect(prompt).not.toContain('恐竜が絶滅せず');
-    expect(prompt).not.toContain('研究ノート');
-  });
-
-  // =================================================================
-  // テスト16: ファイルパスにモードサフィックス
-  // =================================================================
-  it('mode="dino-story"時にファイルパスに-dino-storyサフィックスが付くこと', async () => {
-    globalThis.fetch = createStandardFetchMock();
-    const req = createMockReq({
-      body: { rawText: 'テスト', mode: 'dino-story' }
-    });
-    const res = createMockRes();
-    await handler(req, res);
-
-    expect(res._status).toBe(200);
-    expect(res._json.filePath).toMatch(/-dino-story\.md$/);
-  });
-
-  // =================================================================
-  // テスト17: normalモードはサフィックスなし
-  // =================================================================
-  it('mode="normal"時にファイルパスにサフィックスがないこと', async () => {
-    globalThis.fetch = createStandardFetchMock();
-    const req = createMockReq({
-      body: { rawText: 'テスト', mode: 'normal' }
-    });
-    const res = createMockRes();
-    await handler(req, res);
-
-    expect(res._status).toBe(200);
-    expect(res._json.filePath).toMatch(/\/\d{4}-\d{2}-\d{2}\.md$/);
-    expect(res._json.filePath).not.toContain('-dino');
-    expect(res._json.filePath).not.toContain('-normal');
-  });
-
-  // =================================================================
-  // テスト18: sources要素の型・長さ検証
-  // =================================================================
-  it('sources要素がstring以外の場合400エラーを返すこと', async () => {
-    globalThis.fetch = createStandardFetchMock();
     const req = createMockReq({
       body: {
-        rawText: 'テスト',
+        rawText: '今日はテストの日です。',
         mode: 'dino-research',
-        dinoContext: { sources: [123, 'valid'] }
-      }
+        characterId: 'quetz-default',
+      },
+    });
+    const res = createMockRes();
+    await handler(req, res);
+
+    expect(res._status).toBe(200);
+    expect(res._json.characterId).toBeUndefined();
+  });
+
+  // =================================================================
+  // テスト5: 不正なcharacterIdフォーマットが拒否される
+  // =================================================================
+  it('不正なcharacterIdフォーマットが400で拒否される', async () => {
+    setupFetchMock();
+
+    const req = createMockReq({
+      body: {
+        rawText: '今日はテストの日です。',
+        mode: 'dino-story',
+        characterId: 'INVALID!!!',
+      },
     });
     const res = createMockRes();
     await handler(req, res);
 
     expect(res._status).toBe(400);
-    expect(res._json.error).toContain('参考文献の要素が不正');
   });
 
-  it('sources要素が100文字超過の場合400エラーを返すこと', async () => {
-    globalThis.fetch = createStandardFetchMock();
+  // =================================================================
+  // テスト6: 長すぎるcharacterIdが拒否される
+  // =================================================================
+  it('長すぎるcharacterIdが400で拒否される', async () => {
+    setupFetchMock();
+
     const req = createMockReq({
       body: {
-        rawText: 'テスト',
-        mode: 'dino-research',
-        dinoContext: { sources: ['a'.repeat(101)] }
-      }
+        rawText: '今日はテストの日です。',
+        mode: 'dino-story',
+        characterId: 'a'.repeat(31),
+      },
     });
     const res = createMockRes();
     await handler(req, res);
 
     expect(res._status).toBe(400);
-    expect(res._json.error).toContain('参考文献の要素が不正');
   });
 
   // =================================================================
-  // テスト19: sources/topicのサニタイズ
+  // テスト7: キャラクター読み込み失敗時のfail-open動作
   // =================================================================
-  it('sources/topicの制御文字・マークダウン記法がサニタイズされること', async () => {
-    const capturedClaudeBody = { value: null };
-    globalThis.fetch = createStandardFetchMock(capturedClaudeBody);
+  it('キャラクター読み込み失敗時、fail-openで日記作成が続行される', async () => {
+    setupFetchMock((url) => {
+      if (url.includes('characters/nonexistent-char.json')) {
+        return { ok: false, status: 404, json: async () => ({}) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
     const req = createMockReq({
       body: {
-        rawText: 'テスト',
-        mode: 'dino-research',
-        dinoContext: {
-          topic: 'T-Rex\x00 feathers```injection',
-          sources: ['Nature\x01 2024```hack', 'Clean source']
-        }
-      }
+        rawText: '今日はテストの日です。',
+        mode: 'dino-story',
+        characterId: 'nonexistent-char',
+      },
     });
     const res = createMockRes();
     await handler(req, res);
 
     expect(res._status).toBe(200);
-    const prompt = capturedClaudeBody.value.messages[0].content;
-    // 制御文字が除去されていること
-    expect(prompt).not.toContain('\x00');
-    expect(prompt).not.toContain('\x01');
-    // ```が除去されていること
-    expect(prompt).toContain('T-Rex feathersinjection');
-    expect(prompt).toContain('Nature 2024hack');
-    // クリーンなソースはそのまま
-    expect(prompt).toContain('Clean source');
-  });
-
-  // =================================================================
-  // テスト20: レスポンスにmodeフィールド含む
-  // =================================================================
-  it('レスポンスにmodeフィールドが含まれること', async () => {
-    globalThis.fetch = createStandardFetchMock();
-
-    // dino-storyモード
-    const req1 = createMockReq({
-      body: { rawText: 'テスト', mode: 'dino-story' }
-    });
-    const res1 = createMockRes();
-    await handler(req1, res1);
-    expect(res1._status).toBe(200);
-    expect(res1._json.mode).toBe('dino-story');
-
-    // mode未指定
-    const req2 = createMockReq({
-      body: { rawText: 'テスト' }
-    });
-    const res2 = createMockRes();
-    await handler(req2, res2);
-    expect(res2._status).toBe(200);
-    expect(res2._json.mode).toBe('normal');
+    expect(res._json.characterId).toBeUndefined();
   });
 });

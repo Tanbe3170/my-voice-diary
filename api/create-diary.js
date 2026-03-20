@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { isIP } from 'net';
 import { handleCors } from './lib/cors.js';
 import { verifyJwt } from './lib/jwt.js';
+import { loadCharacter, injectCharacterPrompt } from './lib/character.js';
 
 // api/create-diary.js
 // Vercel Serverless Function - 日記作成API
@@ -310,7 +311,7 @@ export default async function handler(req, res) {
     // ===================================================================
 
     // リクエストボディから日記の生テキストとモード情報を取得
-    const { rawText, mode, dinoContext } = req.body;
+    const { rawText, mode, dinoContext, characterId } = req.body;
 
     // 必須フィールドの存在確認
     if (!rawText) {
@@ -389,6 +390,18 @@ export default async function handler(req, res) {
     }
 
     // ===================================================================
+    // 6c. characterIdバリデーション（dino-storyモード時のみ有効）
+    // ===================================================================
+
+    let effectiveCharacterId = null;
+    if (effectiveMode === 'dino-story' && characterId !== undefined) {
+      if (typeof characterId !== 'string' || !/^[a-z0-9-]{1,30}$/.test(characterId)) {
+        return res.status(400).json({ error: '不正なキャラクターIDです。' });
+      }
+      effectiveCharacterId = characterId;
+    }
+
+    // ===================================================================
     // 7. 環境変数の確認
     // ===================================================================
 
@@ -426,7 +439,26 @@ export default async function handler(req, res) {
     }).replace(/\//g, '年').replace(/年0?/, '年').replace(/月0?/, '月') + '日';
 
     // Claude APIプロンプト構築（モード別）
-    const claudePrompt = buildPrompt(effectiveMode, rawText, today, effectiveMode.startsWith('dino-') ? dinoContext : null);
+    let claudePrompt = buildPrompt(effectiveMode, rawText, today, effectiveMode.startsWith('dino-') ? dinoContext : null);
+
+    // キャラクター設定の注入（dino-storyモード + characterId指定時のみ）
+    let loadedCharacter = null;
+    if (effectiveCharacterId) {
+      try {
+        loadedCharacter = await loadCharacter(effectiveCharacterId, {
+          token: GITHUB_TOKEN,
+          owner: GITHUB_OWNER,
+          repo: GITHUB_REPO,
+        });
+        if (loadedCharacter) {
+          claudePrompt = injectCharacterPrompt(claudePrompt, loadedCharacter);
+        }
+        // loadCharacter returns null on failure → fail-open (continue without character)
+      } catch (charErr) {
+        console.warn('キャラクター読み込みエラー（続行）:', charErr.message);
+        // fail-open: キャラクター読み込み失敗時は通常の日記作成を続行
+      }
+    }
 
     // Claude APIにリクエスト送信
     const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
@@ -674,10 +706,12 @@ ${diaryData.body}
     let imageToken = null;
     if (IMAGE_TOKEN_SECRET) {
       const timestamp = Date.now();
-      // filePathをHMAC署名に含めてトークンとfilePathを拘束する
-      const payload = filePath
-        ? `${todayISO}:${filePath}:${timestamp}`
-        : `${todayISO}:${timestamp}`;
+      // filePath + characterIdをHMAC署名に含めてトークンを拘束する
+      const signedCharacterId = loadedCharacter ? effectiveCharacterId : '';
+      const payloadParts = [todayISO];
+      if (filePath) payloadParts.push(filePath);
+      payloadParts.push(signedCharacterId, effectiveMode, String(timestamp));
+      const payload = payloadParts.join(':');
       const hmac = crypto.createHmac('sha256', IMAGE_TOKEN_SECRET)
         .update(payload).digest('hex');
       imageToken = `${timestamp}:${hmac}`;
@@ -691,7 +725,8 @@ ${diaryData.body}
       githubUrl: `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/blob/main/${filePath}`,
       date: todayISO,
       imageToken,
-      mode: effectiveMode
+      mode: effectiveMode,
+      characterId: loadedCharacter ? effectiveCharacterId : undefined
     });
 
   } catch (error) {

@@ -82,7 +82,7 @@ export default async function handler(req, res) {
     // 5. HMAC署名付きトークン検証（AUTH_TOKENは使用しない）
     // ===================================================================
 
-    const { date, imageToken, filePath, characterId } = req.body;
+    const { date, imageToken, filePath, characterId, mode } = req.body;
 
     if (!date || !imageToken) {
       return res.status(400).json({ error: '必要なパラメータが不足しています。' });
@@ -123,6 +123,18 @@ export default async function handler(req, res) {
       }
     }
 
+    // modeバリデーション（未指定時のみnormal、不正値は拒否）
+    const VALID_MODES = ['normal', 'dino-story', 'dino-research'];
+    if (mode !== undefined && (typeof mode !== 'string' || !VALID_MODES.includes(mode))) {
+      return res.status(400).json({ error: '不正なモードです。' });
+    }
+    const effectiveMode = mode || 'normal';
+
+    // characterIdはdino-storyモード時のみ許可（サーバー側強制）
+    if (characterId && effectiveMode !== 'dino-story') {
+      return res.status(400).json({ error: 'キャラクターIDはdino-storyモードでのみ使用できます。' });
+    }
+
     // imageToken = "timestamp:hmac" 形式検証
     if (typeof imageToken !== 'string') {
       return res.status(401).json({ error: '不正なトークン形式' });
@@ -144,10 +156,12 @@ export default async function handler(req, res) {
     }
 
     // HMAC再計算と検証（タイミング攻撃対策: crypto.timingSafeEqual使用）
-    // filePathが指定されている場合は署名に含めて拘束する
-    const expectedPayload = filePath
-      ? `${date}:${filePath}:${tsStr}`
-      : `${date}:${tsStr}`;
+    // filePath + characterIdを署名に含めて拘束する
+    const signedCharacterId = characterId || '';
+    const payloadParts = [date];
+    if (filePath) payloadParts.push(filePath);
+    payloadParts.push(signedCharacterId, effectiveMode, tsStr);
+    const expectedPayload = payloadParts.join(':');
     const expectedHmac = crypto.createHmac('sha256', IMAGE_SECRET)
       .update(expectedPayload).digest('hex');
     const a = Buffer.from(receivedHmac, 'hex');
@@ -366,6 +380,9 @@ export default async function handler(req, res) {
     };
     if (loadedCharacterId) {
       responseBody.characterId = loadedCharacterId;
+    }
+    if (effectiveMode !== 'normal') {
+      responseBody.mode = effectiveMode;
     }
 
     if (imageBase64.length < MAX_BASE64_SIZE) {

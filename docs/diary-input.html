@@ -31,6 +31,13 @@
       <input type="text" id="research-topic" maxlength="50" placeholder="例: 恐竜の飛行進化" style="display:block;width:100%;padding:8px;margin:4px 0;">
     </div>
 
+    <div id="dino-mode-field" style="margin-bottom:16px;">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+        <input type="checkbox" id="dino-mode-toggle">
+        恐竜ストーリーモード（ケッツと一緒に日記を書く）
+      </label>
+    </div>
+
     <div class="input-methods">
       <h2>入力方法を選択</h2>
 
@@ -77,7 +84,8 @@
     </div>
   </main>
 
-  <script>
+  <script type="module">
+    import { buildImageRequestBody } from './js/build-image-request.js';
     // === Web Speech API 実装 ===
     const voiceBtn = document.getElementById('voice-btn');
     const voiceStatus = document.getElementById('voice-status');
@@ -163,6 +171,8 @@
         tabResearch.style.background = '#333';
         tabResearch.style.color = '#fff';
         researchFields.style.display = 'block';
+        document.getElementById('dino-mode-field').style.display = 'none';
+        document.getElementById('dino-mode-toggle').checked = false;
       } else {
         tabResearch.classList.remove('active');
         tabResearch.style.background = '#fff';
@@ -171,6 +181,7 @@
         tabDiary.style.background = '#333';
         tabDiary.style.color = '#fff';
         researchFields.style.display = 'none';
+        document.getElementById('dino-mode-field').style.display = 'block';
       }
     }
 
@@ -221,6 +232,10 @@
         } else {
           apiUrl = '/api/create-diary';
           requestBody = { rawText };
+          if (document.getElementById('dino-mode-toggle').checked) {
+            requestBody.mode = 'dino-story';
+            requestBody.characterId = 'quetz-default';
+          }
         }
 
         const response = await fetch(apiUrl, {
@@ -298,11 +313,13 @@
             imageBtn.textContent = '🎨 画像を生成中...';
 
             try {
-              const imgRequestBody = {
+              const imgRequestBody = buildImageRequestBody({
                 date: result.date,
-                imageToken: result.imageToken
-              };
-              if (result.filePath) imgRequestBody.filePath = result.filePath;
+                imageToken: result.imageToken,
+                filePath: result.filePath,
+                characterId: result.characterId,
+                mode: result.mode
+              });
 
               const imgResponse = await fetch('/api/generate-image', {
                 method: 'POST',
