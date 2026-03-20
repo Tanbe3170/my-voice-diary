@@ -4,7 +4,7 @@
 // 日記作成・画像生成後にInstagram Graph APIで自動投稿する。
 //
 // セキュリティ機能:
-// 1. CORS設定（共通ヘルパー: api/lib/cors.js）
+// 1. CORS設定（共通ヘルパー: lib/cors.js）
 // 2. JWT認証（JWTのみ、AUTH_TOKENフォールバックなし）
 // 3. Upstash Redis永続レート制限（5req/日、IPベース）
 // 4. 重複投稿防止（Redis SETNX/GETで冪等性保証）
@@ -14,8 +14,8 @@
 
 import crypto from 'crypto';
 import { isIP } from 'net';
-import { handleCors } from './lib/cors.js';
-import { verifyJwt } from './lib/jwt.js';
+import { handleCors } from '../lib/cors.js';
+import { verifyJwt } from '../lib/jwt.js';
 
 export default async function handler(req, res) {
   // ===================================================================

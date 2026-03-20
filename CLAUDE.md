@@ -180,10 +180,15 @@ voice-diary/
 │   ├── generate-image.js       # 画像生成API（DALL-E 3 + GitHub保存）
 │   ├── post-instagram.js       # Instagram投稿API（Graph API + 冪等性保証）
 │   ├── post-bluesky.js         # Bluesky投稿API（AT Protocol + 冪等性保証）
-│   ├── post-threads.js         # Threads投稿API（Threads API + 冪等性保証）
-│   └── lib/
-│       ├── cors.js             # CORS共通ユーティリティ
-│       └── jwt.js              # JWT署名・検証（HS256、外部依存ゼロ）
+│   └── post-threads.js         # Threads投稿API（Threads API + 冪等性保証）
+│
+├── lib/                        # 共通ライブラリ（Vercel関数カウント対象外）
+│   ├── cors.js                 # CORS共通ユーティリティ
+│   ├── jwt.js                  # JWT署名・検証（HS256、外部依存ゼロ）
+│   ├── character.js            # キャラクターシステム
+│   ├── image-backend.js        # 画像生成バックエンド（フォールバックチェーン）
+│   ├── image-styles.js         # 画像スタイル定義
+│   └── image-token.js          # HMAC画像トークン生成・検証
 │
 ├── scripts/                    # 管理・自動化スクリプト
 │   ├── generate-jwt.js         # 管理者用JWT生成CLI
@@ -267,7 +272,7 @@ AUTH_TOKEN一致 → 認証OK + console.warn('レガシー認証使用')
 401 Unauthorized
 ```
 
-**JWT検証仕様（api/lib/jwt.js）:**
+**JWT検証仕様（lib/jwt.js）:**
 - alg固定: HS256のみ（alg: none攻撃防止）
 - exp必須: 数値型、`exp > now - 60`
 - nbf検証: 存在する場合 `nbf <= now + 60`
@@ -297,7 +302,7 @@ AUTH_TOKEN一致 → 認証OK + console.warn('レガシー認証使用')
 
 ### CORS
 
-`api/lib/cors.js`で許可オリジンを管理:
+`lib/cors.js`で許可オリジンを管理:
 - `https://my-voice-diary.vercel.app`（本番）
 - `https://{VERCEL_URL}`（プレビュー）
 - `null`（ローカル開発）

@@ -9,7 +9,7 @@ import {
   buildTokenPayload,
   generateImageToken,
   verifyImageToken,
-} from '../api/lib/image-token.js';
+} from '../lib/image-token.js';
 
 const TEST_SECRET = 'test-hmac-secret-key-32bytes!!!';
 

@@ -100,6 +100,7 @@
 
   <script type="module">
     import { buildImageRequestBody } from './js/build-image-request.js';
+    import { safeJson } from './js/safe-json.js';
     // === Web Speech API 実装 ===
     const voiceBtn = document.getElementById('voice-btn');
     const voiceStatus = document.getElementById('voice-status');
@@ -282,7 +283,7 @@
         progressBar.value = 70;
 
         if (!response.ok) {
-          const errorData = await response.json();
+          const errorData = await safeJson(response);
           // 401: トークン期限切れ→sessionStorageクリア→再入力を促す
           if (response.status === 401) {
             sessionStorage.removeItem('auth_token');
@@ -361,7 +362,7 @@
               });
 
               if (!imgResponse.ok) {
-                const imgError = await imgResponse.json();
+                const imgError = await safeJson(imgResponse);
                 throw new Error(imgError.error || '画像の生成に失敗しました。');
               }
 
@@ -458,11 +459,11 @@
                     })
                   });
 
-                  const igData = await igResponse.json();
-
                   if (!igResponse.ok) {
-                    throw new Error(igData.error || 'Instagram投稿に失敗しました。');
+                    const igError = await safeJson(igResponse);
+                    throw new Error(igError.error || 'Instagram投稿に失敗しました。');
                   }
+                  const igData = await igResponse.json();
 
                   // 成功表示
                   const igResultDiv = document.createElement('div');
@@ -567,11 +568,11 @@
                     })
                   });
 
-                  const bsData = await bsResponse.json();
-
                   if (!bsResponse.ok) {
-                    throw new Error(bsData.error || 'Bluesky投稿に失敗しました。');
+                    const bsError = await safeJson(bsResponse);
+                    throw new Error(bsError.error || 'Bluesky投稿に失敗しました。');
                   }
+                  const bsData = await bsResponse.json();
 
                   const bsResultDiv = document.createElement('div');
                   bsResultDiv.className = 'bs-success';
@@ -664,11 +665,11 @@
                     })
                   });
 
-                  const thData = await thResponse.json();
-
                   if (!thResponse.ok) {
-                    throw new Error(thData.error || 'Threads投稿に失敗しました。');
+                    const thError = await safeJson(thResponse);
+                    throw new Error(thError.error || 'Threads投稿に失敗しました。');
                   }
+                  const thData = await thResponse.json();
 
                   const thResultDiv = document.createElement('div');
                   thResultDiv.className = 'th-success';

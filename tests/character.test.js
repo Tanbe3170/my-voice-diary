@@ -7,8 +7,8 @@
 // 3. injectCharacterPrompt: Claudeプロンプトへのキャラクター設定注入
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { loadCharacter, composeImagePrompt, injectCharacterPrompt } from '../api/lib/character.js';
-import { getStyle } from '../api/lib/image-styles.js';
+import { loadCharacter, composeImagePrompt, injectCharacterPrompt } from '../lib/character.js';
+import { getStyle } from '../lib/image-styles.js';
 
 // fetchモック
 const originalFetch = global.fetch;

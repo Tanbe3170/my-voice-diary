@@ -10,7 +10,7 @@
 // 6. キャラクター画像生成（characterId指定・プロンプト合成・フォールバック）
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { generateImageToken } from '../api/lib/image-token.js';
+import { generateImageToken } from '../lib/image-token.js';
 
 // vi.hoisted でモック関数を定義（vi.mock ファクトリ内で参照可能にする）
 const { mockGenerateImageWithFallback } = vi.hoisted(() => ({
@@ -23,13 +23,13 @@ const { mockLoadCharacter, mockComposeImagePrompt } = vi.hoisted(() => ({
 }));
 
 // image-backend をモック（@google/genai の依存も回避）
-vi.mock('../api/lib/image-backend.js', () => ({
+vi.mock('../lib/image-backend.js', () => ({
   generateImageWithFallback: mockGenerateImageWithFallback,
   sanitizeError: (msg) => msg,
 }));
 
 // character.js をモック
-vi.mock('../api/lib/character.js', () => ({
+vi.mock('../lib/character.js', () => ({
   loadCharacter: mockLoadCharacter,
   composeImagePrompt: mockComposeImagePrompt,
 }));

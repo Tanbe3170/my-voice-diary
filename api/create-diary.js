@@ -1,9 +1,9 @@
 import { isIP } from 'net';
-import { handleCors } from './lib/cors.js';
-import { verifyJwt } from './lib/jwt.js';
-import { loadCharacter, injectCharacterPrompt } from './lib/character.js';
-import { isValidStyleId, getStyleClaudeInstruction } from './lib/image-styles.js';
-import { generateImageToken } from './lib/image-token.js';
+import { handleCors } from '../lib/cors.js';
+import { verifyJwt } from '../lib/jwt.js';
+import { loadCharacter, injectCharacterPrompt } from '../lib/character.js';
+import { isValidStyleId, getStyleClaudeInstruction } from '../lib/image-styles.js';
+import { generateImageToken } from '../lib/image-token.js';
 
 // api/create-diary.js
 // Vercel Serverless Function - 日記作成API
@@ -12,7 +12,7 @@ import { generateImageToken } from './lib/image-token.js';
 // Claude APIで整形してGitHubに保存するサーバーレス関数です。
 //
 // セキュリティ機能:
-// 1. CORS設定（共通ヘルパー: api/lib/cors.js）
+// 1. CORS設定（共通ヘルパー: lib/cors.js）
 // 2. JWT認証（X-Auth-Tokenヘッダー） + AUTH_TOKENフォールバック（移行期間）
 // 3. Upstash Redis永続レート制限（30req/日、IPベース、fail-closed）
 // 4. 入力検証（最大10,000文字、Content-Type検証）

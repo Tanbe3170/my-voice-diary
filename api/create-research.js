@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { isIP } from 'net';
-import { handleCors } from './lib/cors.js';
-import { verifyJwt } from './lib/jwt.js';
+import { handleCors } from '../lib/cors.js';
+import { verifyJwt } from '../lib/jwt.js';
 
 // api/create-research.js
 // Vercel Serverless Function - リサーチ記事作成API
@@ -10,7 +10,7 @@ import { verifyJwt } from './lib/jwt.js';
 // Claude APIで解説記事に整形してGitHubに保存するサーバーレス関数です。
 //
 // セキュリティ機能:
-// 1. CORS設定（共通ヘルパー: api/lib/cors.js）
+// 1. CORS設定（共通ヘルパー: lib/cors.js）
 // 2. JWT認証（JWTのみ、AUTH_TOKENフォールバックなし）
 // 3. Upstash Redis永続レート制限（15req/日、IPベース、fail-closed）
 // 4. 入力検証（rawText最大10,000文字、category検証、topic検証）

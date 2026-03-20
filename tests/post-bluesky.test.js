@@ -12,7 +12,7 @@
 // 8. Bluesky API連携（createSession→uploadBlob→createRecord）
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { signJwt } from '../api/lib/jwt.js';
+import { signJwt } from '../lib/jwt.js';
 
 // sharpモック（PNG→JPEG変換をシミュレート）
 // _nextJpegSize / _nextResizeSize でテスト毎にサイズを制御可能

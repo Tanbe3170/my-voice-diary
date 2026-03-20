@@ -14,7 +14,7 @@
 // 10. slug検証
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { signJwt } from '../api/lib/jwt.js';
+import { signJwt } from '../lib/jwt.js';
 
 // テスト用JWT生成ヘルパー
 const JWT_SECRET = 'test-jwt-secret-key-32bytes-long!';

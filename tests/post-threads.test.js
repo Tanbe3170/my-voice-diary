@@ -12,7 +12,7 @@
 // 8. Threads API連携（Container→Polling→Publish）
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { signJwt } from '../api/lib/jwt.js';
+import { signJwt } from '../lib/jwt.js';
 
 const JWT_SECRET = 'test-jwt-secret-key-32bytes-long!';
 

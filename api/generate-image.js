@@ -4,18 +4,18 @@
 // 日記作成後にDALL-E 3で画像を生成し、GitHubリポジトリに保存する。
 //
 // セキュリティ機能:
-// 1. CORS設定（共通ヘルパー: api/lib/cors.js）
+// 1. CORS設定（共通ヘルパー: lib/cors.js）
 // 2. HMAC署名付きトークン認証（IMAGE_TOKEN_SECRET、AUTH_TOKENは使用しない）
 // 3. Upstash Redis永続レート制限（10req/日、IPベース）
 // 4. 入力検証（date: YYYY-MM-DD、imagePromptはサーバー側取得）
 // 5. エラーハンドリング（汎用エラーのみ返却）
 
 import { isIP } from 'net';
-import { handleCors } from './lib/cors.js';
-import { isValidStyleId } from './lib/image-styles.js';
-import { verifyImageToken } from './lib/image-token.js';
-import { loadCharacter, composeImagePrompt } from './lib/character.js';
-import { generateImageWithFallback, sanitizeError } from './lib/image-backend.js';
+import { handleCors } from '../lib/cors.js';
+import { isValidStyleId } from '../lib/image-styles.js';
+import { verifyImageToken } from '../lib/image-token.js';
+import { loadCharacter, composeImagePrompt } from '../lib/character.js';
+import { generateImageWithFallback, sanitizeError } from '../lib/image-backend.js';
 
 export default async function handler(req, res) {
   // ===================================================================

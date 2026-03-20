@@ -25,7 +25,7 @@ vi.mock('@google/genai', () => ({
 }));
 
 // テスト対象をトップレベルでインポート
-import { generateImageWithFallback, sanitizeError } from '../api/lib/image-backend.js';
+import { generateImageWithFallback, sanitizeError } from '../lib/image-backend.js';
 
 // fetchモック
 const originalFetch = global.fetch;

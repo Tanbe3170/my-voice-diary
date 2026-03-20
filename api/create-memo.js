@@ -5,7 +5,7 @@
 // GitHub APIを通じて .company/secretary/inbox/ に保存する。
 //
 // セキュリティ機能:
-// 1. CORS設定（共通ヘルパー: api/lib/cors.js）
+// 1. CORS設定（共通ヘルパー: lib/cors.js）
 // 2. JWT認証（JWTのみ、AUTH_TOKENフォールバックなし）
 // 3. Upstash Redis永続レート制限（50req/日、IPベース）
 // 4. 入力検証（text: 必須1-5000文字、tag: 任意1-50文字）
@@ -14,8 +14,8 @@
 // 外部API（Claude/DALL-E）は一切呼ばない。GitHub APIのみ。
 
 import { isIP } from 'net';
-import { handleCors } from './lib/cors.js';
-import { verifyJwt } from './lib/jwt.js';
+import { handleCors } from '../lib/cors.js';
+import { verifyJwt } from '../lib/jwt.js';
 
 export default async function handler(req, res) {
   // ===================================================================

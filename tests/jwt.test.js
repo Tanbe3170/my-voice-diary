@@ -12,7 +12,7 @@
 // 8. 不正フォーマット
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { signJwt, verifyJwt } from '../api/lib/jwt.js';
+import { signJwt, verifyJwt } from '../lib/jwt.js';
 import crypto from 'crypto';
 
 const SECRET = 'test-jwt-secret-key-for-unit-tests';

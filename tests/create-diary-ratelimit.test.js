@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // JWT生成用ヘルパー
-import { signJwt } from '../api/lib/jwt.js';
+import { signJwt } from '../lib/jwt.js';
 
 const JWT_SECRET = 'test-jwt-secret-key-for-ratelimit-tests';
 

@@ -8,7 +8,7 @@
 // 環境変数:
 //   JWT_SECRET - JWT署名用シークレット（必須）
 
-import { signJwt } from '../api/lib/jwt.js';
+import { signJwt } from '../lib/jwt.js';
 
 const arg = process.argv[2];
 let hours = 24;

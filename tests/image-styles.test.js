@@ -10,7 +10,7 @@ import {
   getStylePromptPrefix,
   getStyleNegativePrompt,
   getStyleClaudeInstruction,
-} from '../api/lib/image-styles.js';
+} from '../lib/image-styles.js';
 
 describe('IMAGE_STYLES定義', () => {
   it('illustrationスタイルが定義されていること', () => {
