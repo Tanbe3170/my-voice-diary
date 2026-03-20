@@ -10,9 +10,10 @@
 // 4. 入力検証（date: YYYY-MM-DD、imagePromptはサーバー側取得）
 // 5. エラーハンドリング（汎用エラーのみ返却）
 
-import crypto from 'crypto';
 import { isIP } from 'net';
 import { handleCors } from './lib/cors.js';
+import { isValidStyleId } from './lib/image-styles.js';
+import { verifyImageToken } from './lib/image-token.js';
 import { loadCharacter, composeImagePrompt } from './lib/character.js';
 import { generateImageWithFallback, sanitizeError } from './lib/image-backend.js';
 
@@ -82,7 +83,7 @@ export default async function handler(req, res) {
     // 5. HMAC署名付きトークン検証（AUTH_TOKENは使用しない）
     // ===================================================================
 
-    const { date, imageToken, filePath, characterId, mode } = req.body;
+    const { date, imageToken, filePath, characterId, mode, styleId } = req.body;
 
     if (!date || !imageToken) {
       return res.status(400).json({ error: '必要なパラメータが不足しています。' });
@@ -130,43 +131,30 @@ export default async function handler(req, res) {
     }
     const effectiveMode = mode || 'normal';
 
+    // styleIdバリデーション（必須パラメータ）
+    if (!isValidStyleId(styleId)) {
+      return res.status(400).json({ error: '不正な画像スタイルです。' });
+    }
+
     // characterIdはdino-storyモード時のみ許可（サーバー側強制）
     if (characterId && effectiveMode !== 'dino-story') {
       return res.status(400).json({ error: 'キャラクターIDはdino-storyモードでのみ使用できます。' });
     }
 
-    // imageToken = "timestamp:hmac" 形式検証
-    if (typeof imageToken !== 'string') {
-      return res.status(401).json({ error: '不正なトークン形式' });
-    }
-    const parts = imageToken.split(':');
-    if (parts.length !== 2) {
-      return res.status(401).json({ error: '不正なトークン形式' });
-    }
-    const [tsStr, receivedHmac] = parts;
-    const ts = Number(tsStr);
-    if (!Number.isFinite(ts) || ts <= 0) {
-      return res.status(401).json({ error: '不正なトークン形式' });
-    }
+    // imageToken検証（image-token.jsに委譲、fail-closed設計）
+    const tokenResult = verifyImageToken(imageToken, {
+      date,
+      filePath,
+      characterId: characterId || '',
+      mode: effectiveMode,
+      styleId,
+    }, IMAGE_SECRET);
 
-    // TTL検証（5分間）
-    const elapsed = Date.now() - ts;
-    if (elapsed < 0 || elapsed > 5 * 60 * 1000) {
-      return res.status(401).json({ error: 'トークンの有効期限切れ' });
-    }
-
-    // HMAC再計算と検証（タイミング攻撃対策: crypto.timingSafeEqual使用）
-    // filePath + characterIdを署名に含めて拘束する
-    const signedCharacterId = characterId || '';
-    const payloadParts = [date];
-    if (filePath) payloadParts.push(filePath);
-    payloadParts.push(signedCharacterId, effectiveMode, tsStr);
-    const expectedPayload = payloadParts.join(':');
-    const expectedHmac = crypto.createHmac('sha256', IMAGE_SECRET)
-      .update(expectedPayload).digest('hex');
-    const a = Buffer.from(receivedHmac, 'hex');
-    const b = Buffer.from(expectedHmac, 'hex');
-    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    if (!tokenResult.valid) {
+      const reason = tokenResult.reason;
+      if (reason === 'token_expired') {
+        return res.status(401).json({ error: 'トークンの有効期限切れ' });
+      }
       return res.status(401).json({ error: '認証に失敗しました' });
     }
 
@@ -278,24 +266,21 @@ export default async function handler(req, res) {
     // 7.5. キャラクター設定読み込み（任意）
     // ===================================================================
 
-    let composedPrompt = imagePrompt;
-    let negativePrompt = '';
-    let loadedCharacterId = null;
-
+    // キャラクター読み込み（任意）+ スタイル適用
+    let character = null;
     if (characterId) {
-      const character = await loadCharacter(characterId, {
+      character = await loadCharacter(characterId, {
         token: GITHUB_TOKEN,
         owner: GITHUB_OWNER,
         repo: GITHUB_REPO,
       });
-      if (character) {
-        const composed = composeImagePrompt(imagePrompt, character);
-        composedPrompt = composed.prompt;
-        negativePrompt = composed.negativePrompt;
-        loadedCharacterId = characterId;
-      }
-      // キャラクター読み込み失敗時はimagePromptをそのまま使用（fail-open）
     }
+
+    // スタイル + キャラクター合成（キャラクターnullでもスタイルは適用される）
+    const composed = composeImagePrompt(imagePrompt, character, styleId);
+    const composedPrompt = composed.prompt;
+    const negativePrompt = composed.negativePrompt;
+    const loadedCharacterId = character ? characterId : null;
 
     // ===================================================================
     // 8. 画像生成（フォールバックチェーン: NB2 → NBpro → DALL-E 3）

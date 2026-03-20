@@ -38,6 +38,20 @@
       </label>
     </div>
 
+    <div id="image-style-field" style="margin-bottom:16px;">
+      <label style="display:block;margin-bottom:8px;font-weight:bold;">画像スタイル:</label>
+      <div style="display:flex;gap:12px;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:8px 12px;border:2px solid #333;border-radius:8px;background:#333;color:#fff;">
+          <input type="radio" name="imageStyle" value="illustration" checked>
+          <span>🎨 イラスト調</span>
+        </label>
+        <label id="style-oilpainting-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:8px 12px;border:2px solid #333;border-radius:8px;background:#fff;color:#333;">
+          <input type="radio" name="imageStyle" value="oilpainting">
+          <span>🖼️ 油絵調</span>
+        </label>
+      </div>
+    </div>
+
     <div class="input-methods">
       <h2>入力方法を選択</h2>
 
@@ -155,6 +169,22 @@
       voiceStatus.textContent = 'このブラウザは音声認識に対応していません';
     }
 
+    // === 画像スタイル選択UI ===
+    document.querySelectorAll('input[name="imageStyle"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        document.querySelectorAll('input[name="imageStyle"]').forEach(r => {
+          const label = r.closest('label');
+          if (r.checked) {
+            label.style.background = '#333';
+            label.style.color = '#fff';
+          } else {
+            label.style.background = '#fff';
+            label.style.color = '#333';
+          }
+        });
+      });
+    });
+
     // === コンテンツタイプ切替（日記/リサーチ） ===
     let currentContentType = 'diary';
     const tabDiary = document.getElementById('tab-diary');
@@ -232,6 +262,8 @@
         } else {
           apiUrl = '/api/create-diary';
           requestBody = { rawText };
+          // styleIdは必須パラメータ（常に送信）
+          requestBody.styleId = document.querySelector('input[name="imageStyle"]:checked').value;
           if (document.getElementById('dino-mode-toggle').checked) {
             requestBody.mode = 'dino-story';
             requestBody.characterId = 'quetz-default';
@@ -318,7 +350,8 @@
                 imageToken: result.imageToken,
                 filePath: result.filePath,
                 characterId: result.characterId,
-                mode: result.mode
+                mode: result.mode,
+                styleId: result.styleId
               });
 
               const imgResponse = await fetch('/api/generate-image', {

@@ -32,6 +32,7 @@ function createMockReq(overrides = {}) {
     },
     body: {
       rawText: '今日はテストの日です。',
+      styleId: 'illustration',
       ...overrides.body,
     },
     socket: { remoteAddress: '127.0.0.1' },

@@ -36,6 +36,7 @@ const mockCharacter = {
 
 // モック用のreq/resファクトリ
 function createMockReq(overrides = {}) {
+  const { headers: hOverrides, body: bOverrides, ...restOverrides } = overrides;
   return {
     method: 'POST',
     headers: {
@@ -43,14 +44,15 @@ function createMockReq(overrides = {}) {
       'content-type': 'application/json',
       'x-auth-token': createValidJwt(),
       'x-forwarded-for': '192.168.1.1',
-      ...overrides.headers,
+      ...hOverrides,
     },
     body: {
       rawText: '今日はテストの日です。',
-      ...overrides.body,
+      styleId: 'illustration',
+      ...bOverrides,
     },
     socket: { remoteAddress: '127.0.0.1' },
-    ...overrides,
+    ...restOverrides,
   };
 }
 
@@ -178,6 +180,7 @@ describe('create-diary API characterId機能', () => {
     expect(lastClaudePrompt).toContain('キャラクター設定');
     expect(lastClaudePrompt).toContain('ケッツ');
     expect(res._json.characterId).toBe('quetz-default');
+    expect(res._json.styleId).toBe('illustration');
   });
 
   // =================================================================
@@ -197,6 +200,7 @@ describe('create-diary API characterId機能', () => {
 
     expect(res._status).toBe(200);
     expect(res._json.characterId).toBeUndefined();
+    expect(res._json.styleId).toBe('illustration');
   });
 
   // =================================================================
@@ -218,6 +222,7 @@ describe('create-diary API characterId機能', () => {
     expect(res._status).toBe(200);
     expect(res._json.characterId).toBeUndefined();
     expect(lastClaudePrompt).not.toContain('キャラクター設定');
+    expect(res._json.styleId).toBe('illustration');
   });
 
   // =================================================================
@@ -238,6 +243,7 @@ describe('create-diary API characterId機能', () => {
 
     expect(res._status).toBe(200);
     expect(res._json.characterId).toBeUndefined();
+    expect(res._json.styleId).toBe('illustration');
   });
 
   // =================================================================
@@ -301,5 +307,63 @@ describe('create-diary API characterId機能', () => {
 
     expect(res._status).toBe(200);
     expect(res._json.characterId).toBeUndefined();
+    expect(res._json.styleId).toBe('illustration');
+  });
+
+  // =================================================================
+  // テスト8: 不正なstyleIdが400で拒否されること
+  // =================================================================
+  it('不正なstyleIdが400で拒否されること', async () => {
+    setupFetchMock();
+    const req = createMockReq({
+      body: { rawText: '今日はテストの日です。', styleId: 'invalid-style' },
+    });
+    const res = createMockRes();
+    await handler(req, res);
+    expect(res._status).toBe(400);
+  });
+
+  // =================================================================
+  // テスト9: styleId未指定が400で拒否されること
+  // =================================================================
+  it('styleId未指定が400で拒否されること', async () => {
+    setupFetchMock();
+    const req = createMockReq({
+      body: { rawText: '今日はテストの日です。' },
+    });
+    // styleIdをundefinedに設定
+    delete req.body.styleId;
+    const res = createMockRes();
+    await handler(req, res);
+    expect(res._status).toBe(400);
+  });
+
+  // =================================================================
+  // テスト10: styleIdがClaudeプロンプトに反映されること
+  // =================================================================
+  it('styleIdがClaudeプロンプトに反映されること', async () => {
+    setupFetchMock();
+    const req = createMockReq({
+      body: { rawText: '今日はテストの日です。', styleId: 'oilpainting' },
+    });
+    const res = createMockRes();
+    await handler(req, res);
+    expect(res._status).toBe(200);
+    // 油絵スタイルの指示がClaudeプロンプトに含まれること
+    expect(lastClaudePrompt).toContain('油絵調');
+  });
+
+  // =================================================================
+  // テスト11: レスポンスにstyleIdが含まれること
+  // =================================================================
+  it('レスポンスにstyleIdが含まれること', async () => {
+    setupFetchMock();
+    const req = createMockReq({
+      body: { rawText: '今日はテストの日です。', styleId: 'illustration' },
+    });
+    const res = createMockRes();
+    await handler(req, res);
+    expect(res._status).toBe(200);
+    expect(res._json.styleId).toBe('illustration');
   });
 });

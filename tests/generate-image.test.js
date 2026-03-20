@@ -10,7 +10,7 @@
 // 6. キャラクター画像生成（characterId指定・プロンプト合成・フォールバック）
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import crypto from 'crypto';
+import { generateImageToken } from '../api/lib/image-token.js';
 
 // vi.hoisted でモック関数を定義（vi.mock ファクトリ内で参照可能にする）
 const { mockGenerateImageWithFallback } = vi.hoisted(() => ({
@@ -36,17 +36,16 @@ vi.mock('../api/lib/character.js', () => ({
 
 // テスト用の有効なHMACトークンを生成するヘルパー
 const IMAGE_TOKEN_SECRET = 'test-secret-key';
-function createValidToken(date, filePath, characterId, mode = 'normal') {
+function createValidToken(date, filePath, characterId, mode = 'normal', styleId = 'illustration') {
   const timestamp = Date.now();
-  // filePath + characterId + modeを署名に含める（api側と一致させる）
-  const signedCharacterId = characterId || '';
-  const payloadParts = [date];
-  if (filePath) payloadParts.push(filePath);
-  payloadParts.push(signedCharacterId, mode, String(timestamp));
-  const payload = payloadParts.join(':');
-  const hmac = crypto.createHmac('sha256', IMAGE_TOKEN_SECRET)
-    .update(payload).digest('hex');
-  return `${timestamp}:${hmac}`;
+  return generateImageToken({
+    date,
+    filePath,
+    characterId: characterId || '',
+    mode,
+    styleId,
+    timestamp,
+  }, IMAGE_TOKEN_SECRET);
 }
 
 // モック用のreq/resファクトリ
@@ -62,6 +61,7 @@ function createMockReq(overrides = {}) {
     body: {
       date: '2026-02-19',
       imageToken: createValidToken('2026-02-19'),
+      styleId: 'illustration',
       ...overrides.body,
     },
     socket: { remoteAddress: '127.0.0.1' },
@@ -112,9 +112,9 @@ describe('generate-image API', () => {
 
     // デフォルトのモック動作設定
     mockLoadCharacter.mockResolvedValue(null); // デフォルトはキャラクターなし
-    mockComposeImagePrompt.mockImplementation((prompt, char) => ({
-      prompt: char ? `composed: ${prompt}` : prompt,
-      negativePrompt: char ? 'negative' : '',
+    mockComposeImagePrompt.mockImplementation((prompt, char, sid) => ({
+      prompt: char ? `composed: ${prompt}` : `styled(${sid}): ${prompt}`,
+      negativePrompt: char ? 'negative' : (sid ? 'style-negative' : ''),
     }));
 
     // fetch呼び出しを記録
@@ -274,15 +274,18 @@ describe('generate-image API', () => {
       // 6分前のタイムスタンプでトークン生成
       const expiredTs = Date.now() - 6 * 60 * 1000;
       const date = '2026-02-19';
-      const payload = `${date}::normal:${expiredTs}`;
-      const hmac = crypto.createHmac('sha256', IMAGE_TOKEN_SECRET)
-        .update(payload).digest('hex');
-      const expiredToken = `${expiredTs}:${hmac}`;
+      const expiredToken = generateImageToken({
+        date,
+        characterId: '',
+        mode: 'normal',
+        styleId: 'illustration',
+        timestamp: expiredTs,
+      }, IMAGE_TOKEN_SECRET);
 
       globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => ({}) }));
 
       const req = createMockReq({
-        body: { date, imageToken: expiredToken },
+        body: { date, imageToken: expiredToken, styleId: 'illustration' },
       });
       const res = createMockRes();
       await handler(req, res);
@@ -300,7 +303,7 @@ describe('generate-image API', () => {
       globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => ({}) }));
 
       const req = createMockReq({
-        body: { date, imageToken: invalidToken },
+        body: { date, imageToken: invalidToken, styleId: 'illustration' },
       });
       const res = createMockRes();
       await handler(req, res);
@@ -309,11 +312,166 @@ describe('generate-image API', () => {
       expect(res._json.error).toContain('認証');
     });
 
+    it('未来timestampのトークンで401を返す', async () => {
+      // 1分後のタイムスタンプ（未来時刻）
+      const futureTs = Date.now() + 60 * 1000;
+      const date = '2026-02-19';
+      const futureToken = generateImageToken({
+        date,
+        characterId: '',
+        mode: 'normal',
+        styleId: 'illustration',
+        timestamp: futureTs,
+      }, IMAGE_TOKEN_SECRET);
+
+      globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => ({}) }));
+
+      const req = createMockReq({
+        body: { date, imageToken: futureToken, styleId: 'illustration' },
+      });
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(401);
+    });
+
+    it('TTL境界: 299,999ms前のトークンは許可されること', async () => {
+      vi.useFakeTimers();
+      const now = Date.now();
+      vi.setSystemTime(now);
+
+      const date = '2026-02-19';
+      const tokenTs = now - 299_999;
+      const token = generateImageToken({
+        date,
+        characterId: '',
+        mode: 'normal',
+        styleId: 'illustration',
+        timestamp: tokenTs,
+      }, IMAGE_TOKEN_SECRET);
+
+      globalThis.fetch = vi.fn(async (url) => {
+        if (url.includes('upstash') && url.includes('incr')) {
+          return { ok: true, json: async () => ({ result: 1 }) };
+        }
+        if (url.includes('upstash') && url.includes('expire')) {
+          return { ok: true, json: async () => ({ result: 1 }) };
+        }
+        if (url.includes('api.github.com') && url.includes('contents/diaries')) {
+          const content = Buffer.from(
+            '---\nimage_prompt: "A test image prompt"\n---\n# Test',
+            'utf-8'
+          ).toString('base64');
+          return { ok: true, json: async () => ({ content, sha: 'abc123' }) };
+        }
+        if (url.includes('api.github.com') && url.includes('contents/docs/images')) {
+          return { ok: true, json: async () => ({ content: {} }) };
+        }
+        return { ok: true, json: async () => ({}) };
+      });
+
+      mockGenerateImageWithFallback.mockResolvedValueOnce({
+        imageData: Buffer.from('fake-png'),
+        backend: 'dalle',
+        model: 'DALL-E 3',
+        modelId: 'dall-e-3',
+      });
+
+      const req = createMockReq({
+        body: { date, imageToken: token, styleId: 'illustration' },
+      });
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(200);
+      vi.useRealTimers();
+    });
+
+    it('TTL境界: ちょうど300,000ms前のトークンは許可されること', async () => {
+      vi.useFakeTimers();
+      const now = Date.now();
+      vi.setSystemTime(now);
+
+      const date = '2026-02-19';
+      const tokenTs = now - 300_000;
+      const token = generateImageToken({
+        date,
+        characterId: '',
+        mode: 'normal',
+        styleId: 'illustration',
+        timestamp: tokenTs,
+      }, IMAGE_TOKEN_SECRET);
+
+      globalThis.fetch = vi.fn(async (url) => {
+        if (url.includes('upstash') && url.includes('incr')) {
+          return { ok: true, json: async () => ({ result: 1 }) };
+        }
+        if (url.includes('upstash') && url.includes('expire')) {
+          return { ok: true, json: async () => ({ result: 1 }) };
+        }
+        if (url.includes('api.github.com') && url.includes('contents/diaries')) {
+          const content = Buffer.from(
+            '---\nimage_prompt: "A test image prompt"\n---\n# Test',
+            'utf-8'
+          ).toString('base64');
+          return { ok: true, json: async () => ({ content, sha: 'abc123' }) };
+        }
+        if (url.includes('api.github.com') && url.includes('contents/docs/images')) {
+          return { ok: true, json: async () => ({ content: {} }) };
+        }
+        return { ok: true, json: async () => ({}) };
+      });
+
+      mockGenerateImageWithFallback.mockResolvedValueOnce({
+        imageData: Buffer.from('fake-png'),
+        backend: 'dalle',
+        model: 'DALL-E 3',
+        modelId: 'dall-e-3',
+      });
+
+      const req = createMockReq({
+        body: { date, imageToken: token, styleId: 'illustration' },
+      });
+      const res = createMockRes();
+      await handler(req, res);
+
+      // age > 300_000 なので、300,000msちょうどは許可
+      expect(res._status).toBe(200);
+      vi.useRealTimers();
+    });
+
+    it('TTL境界: 300,001ms前のトークンで401を返すこと', async () => {
+      vi.useFakeTimers();
+      const now = Date.now();
+      vi.setSystemTime(now);
+
+      const date = '2026-02-19';
+      const tokenTs = now - 300_001;
+      const token = generateImageToken({
+        date,
+        characterId: '',
+        mode: 'normal',
+        styleId: 'illustration',
+        timestamp: tokenTs,
+      }, IMAGE_TOKEN_SECRET);
+
+      globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => ({}) }));
+
+      const req = createMockReq({
+        body: { date, imageToken: token, styleId: 'illustration' },
+      });
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(401);
+      vi.useRealTimers();
+    });
+
     it('不正な形式のトークンで401を返す', async () => {
       globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => ({}) }));
 
       const req = createMockReq({
-        body: { date: '2026-02-19', imageToken: 'invalid-token-format' },
+        body: { date: '2026-02-19', imageToken: 'invalid-token-format', styleId: 'illustration' },
       });
       const res = createMockRes();
       await handler(req, res);
@@ -362,6 +520,7 @@ describe('generate-image API', () => {
           date: '2026-02-19',
           imageToken: createValidToken('2026-02-19', 'diaries/2026/02/my-custom-diary.md'),
           filePath: 'diaries/2026/02/my-custom-diary.md',
+          styleId: 'illustration',
         },
       });
       const res = createMockRes();
@@ -380,6 +539,7 @@ describe('generate-image API', () => {
           date: '2026-02-19',
           imageToken: createValidToken('2026-02-19'),
           filePath: '../../../etc/passwd',
+          styleId: 'illustration',
         },
       });
       const res = createMockRes();
@@ -572,6 +732,7 @@ describe('generate-image API', () => {
           imageToken: createValidToken('2026-02-19', undefined, 'dino', 'dino-story'),
           characterId: 'dino',
           mode: 'dino-story',
+          styleId: 'illustration',
         },
       });
       const res = createMockRes();
@@ -587,7 +748,7 @@ describe('generate-image API', () => {
       }));
       // composeImagePromptが呼ばれたことを検証
       expect(mockComposeImagePrompt).toHaveBeenCalledTimes(1);
-      expect(mockComposeImagePrompt).toHaveBeenCalledWith('A sunny day at the park', mockCharacter);
+      expect(mockComposeImagePrompt).toHaveBeenCalledWith('A sunny day at the park', mockCharacter, 'illustration');
       // generateImageWithFallbackが合成プロンプトで呼ばれたことを検証
       expect(mockGenerateImageWithFallback).toHaveBeenCalledWith(
         'composed: A sunny day at the park with cute dinosaur character',
@@ -614,11 +775,13 @@ describe('generate-image API', () => {
       expect(res._status).toBe(200);
       // loadCharacterが呼ばれていないことを検証
       expect(mockLoadCharacter).not.toHaveBeenCalled();
+      // composeImagePromptがnullキャラクター + styleIdで呼ばれることを検証
+      expect(mockComposeImagePrompt).toHaveBeenCalledWith('A sunny day at the park', null, 'illustration');
       // generateImageWithFallbackは呼ばれることを検証
       expect(mockGenerateImageWithFallback).toHaveBeenCalledTimes(1);
     });
 
-    it('キャラクターファイル不存在時にフォールバック（imagePromptそのまま使用）', async () => {
+    it('キャラクターファイル不存在時にフォールバック（スタイルは適用される）', async () => {
       mockLoadCharacter.mockResolvedValueOnce(null); // キャラクター見つからない
       mockGenerateImageWithFallback.mockResolvedValueOnce({
         imageData: Buffer.from('fake-png'),
@@ -635,6 +798,7 @@ describe('generate-image API', () => {
           imageToken: createValidToken('2026-02-19', undefined, 'nonexistent', 'dino-story'),
           characterId: 'nonexistent',
           mode: 'dino-story',
+          styleId: 'illustration',
         },
       });
       const res = createMockRes();
@@ -643,12 +807,12 @@ describe('generate-image API', () => {
       expect(res._status).toBe(200);
       // loadCharacterは呼ばれるがnullを返す
       expect(mockLoadCharacter).toHaveBeenCalledTimes(1);
-      // composeImagePromptが呼ばれていないことを検証
-      expect(mockComposeImagePrompt).not.toHaveBeenCalled();
-      // generateImageWithFallbackは元のimagePromptで呼ばれることを検証
+      // composeImagePromptがnullキャラクター + styleIdで呼ばれることを検証
+      expect(mockComposeImagePrompt).toHaveBeenCalledWith('A sunny day at the park', null, 'illustration');
+      // generateImageWithFallbackはスタイル適用済みプロンプトで呼ばれることを検証
       expect(mockGenerateImageWithFallback).toHaveBeenCalledWith(
-        'A sunny day at the park',
-        '',
+        'styled(illustration): A sunny day at the park',
+        'style-negative',
       );
     });
 
@@ -686,6 +850,7 @@ describe('generate-image API', () => {
           imageToken: createValidToken('2026-02-19', undefined, 'quetz-default', 'normal'),
           characterId: 'quetz-default',
           mode: 'normal',
+          styleId: 'illustration',
         },
       });
       const res = createMockRes();
@@ -710,6 +875,7 @@ describe('generate-image API', () => {
           imageToken: createValidToken('2026-02-19', undefined, '', 'dino-story'),
           // リクエストではmode='normal'を送信（改ざん）
           mode: 'normal',
+          styleId: 'illustration',
         },
       });
       const res = createMockRes();
@@ -734,6 +900,7 @@ describe('generate-image API', () => {
           imageToken: createValidToken('2026-02-19', undefined, 'quetz-default', 'dino-story'),
           characterId: 'other-char',
           mode: 'dino-story',
+          styleId: 'illustration',
         },
       });
       const res = createMockRes();
@@ -756,6 +923,7 @@ describe('generate-image API', () => {
           date: '2026-02-19',
           imageToken: createValidToken('2026-02-19'),
           mode: 'invalid-mode',
+          styleId: 'illustration',
         },
       });
       const res = createMockRes();
@@ -779,6 +947,7 @@ describe('generate-image API', () => {
           date: '2026-02-19',
           imageToken: createValidToken('2026-02-19'),
           characterId: '../secret',
+          styleId: 'illustration',
         },
       });
       const res1 = createMockRes();
@@ -791,11 +960,63 @@ describe('generate-image API', () => {
           date: '2026-02-19',
           imageToken: createValidToken('2026-02-19'),
           characterId: 'UPPERCASE',
+          styleId: 'illustration',
         },
       });
       const res2 = createMockRes();
       await handler(req2, res2);
       expect(res2._status).toBe(400);
+    });
+  });
+
+  // =================================================================
+  // テスト7: styleIdバリデーション
+  // =================================================================
+  describe('styleIdバリデーション', () => {
+    it('不正なstyleIdで400を返すこと', async () => {
+      globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => ({}) }));
+      const req = createMockReq({
+        body: {
+          date: '2026-02-19',
+          imageToken: createValidToken('2026-02-19'),
+          styleId: 'invalid-style',
+        },
+      });
+      const res = createMockRes();
+      await handler(req, res);
+      expect(res._status).toBe(400);
+      expect(res._json.error).toContain('スタイル');
+    });
+
+    it('styleId未指定で400を返すこと', async () => {
+      globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => ({}) }));
+      const req = createMockReq();
+      delete req.body.styleId;
+      const res = createMockRes();
+      await handler(req, res);
+      expect(res._status).toBe(400);
+    });
+
+    it('styleId改ざん（署名と不一致）で401を返す', async () => {
+      globalThis.fetch = vi.fn(async (url) => {
+        if (url.includes('upstash') && url.includes('incr')) {
+          return { ok: true, json: async () => ({ result: 1 }) };
+        }
+        return { ok: true, json: async () => ({}) };
+      });
+
+      // トークンはstyleId='illustration'で署名
+      const req = createMockReq({
+        body: {
+          date: '2026-02-19',
+          imageToken: createValidToken('2026-02-19', undefined, '', 'normal', 'illustration'),
+          styleId: 'oilpainting', // 改ざん
+        },
+      });
+      const res = createMockRes();
+      await handler(req, res);
+      expect(res._status).toBe(401);
+      expect(res._json.error).toContain('認証');
     });
   });
 });

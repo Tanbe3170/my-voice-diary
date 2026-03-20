@@ -4,6 +4,8 @@
 // GitHub APIからキャラクター設定JSONを取得し、
 // 画像生成プロンプトやClaude整形プロンプトに合成する。
 
+import { getStyle } from './image-styles.js';
+
 /**
  * characterIdのバリデーション（英数字・ハイフンのみ、最大30文字）
  * @param {string} characterId - キャラクターID
@@ -101,12 +103,14 @@ export async function loadCharacter(characterId, githubConfig) {
  * @param {object|null} character - キャラクター設定オブジェクト（nullの場合はそのまま返却）
  * @returns {{ prompt: string, negativePrompt: string }}
  */
-export function composeImagePrompt(diaryImagePrompt, character) {
+export function composeImagePrompt(diaryImagePrompt, character, styleId) {
+  const style = getStyle(styleId);
+
   // キャラクターがnullの場合は元のプロンプトをそのまま返却
   if (!character) {
     return {
-      prompt: diaryImagePrompt,
-      negativePrompt: '',
+      prompt: style ? `${style.promptPrefix}. ${diaryImagePrompt}` : diaryImagePrompt,
+      negativePrompt: style ? style.negativePrompt : '',
     };
   }
 
@@ -117,16 +121,20 @@ export function composeImagePrompt(diaryImagePrompt, character) {
   const composed = [
     basePrompt,
     `Scene: ${diaryImagePrompt}`,
-    `Style: ${styleModifiers.join(', ')}`,
+    style ? `Art style: ${style.promptPrefix}` : null,
+    `Style details: ${styleModifiers.join(', ')}`,
     `Important details: ${consistencyKeywords.join(', ')}`,
     craftAnalysis
       ? `Color: ${craftAnalysis.color}. Rendering: ${craftAnalysis.rendering}. Atmosphere: ${craftAnalysis.atmosphere}`
       : '',
   ].filter(Boolean).join('. ');
 
+  const mergedNegative = [negativePrompt, style ? style.negativePrompt : '']
+    .filter(Boolean).join(', ');
+
   return {
     prompt: composed.slice(0, 3800),
-    negativePrompt: negativePrompt || '',
+    negativePrompt: mergedNegative,
   };
 }
 

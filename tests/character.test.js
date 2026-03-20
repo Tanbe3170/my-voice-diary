@@ -8,6 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { loadCharacter, composeImagePrompt, injectCharacterPrompt } from '../api/lib/character.js';
+import { getStyle } from '../api/lib/image-styles.js';
 
 // fetchモック
 const originalFetch = global.fetch;
@@ -165,31 +166,30 @@ describe('loadCharacter', () => {
 describe('composeImagePrompt', () => {
   it('キャラクター設定 + image_promptの合成', () => {
     const character = createValidCharacter();
-    const result = composeImagePrompt('A sunny park scene', character);
+    const result = composeImagePrompt('A sunny park scene', character, 'illustration');
 
     expect(result.prompt).toContain('A cute chibi Quetzalcoatlus pterosaur character');
     expect(result.prompt).toContain('Scene: A sunny park scene');
-    expect(result.negativePrompt).toBe('photorealistic, dark, horror');
+    expect(result.negativePrompt).toContain('photorealistic, dark, horror');
   });
 
   it('キャラクターがnullの場合はimage_promptをそのまま返却', () => {
-    const result = composeImagePrompt('A sunny park scene', null);
+    const result = composeImagePrompt('A sunny park scene', null, 'illustration');
 
-    expect(result.prompt).toBe('A sunny park scene');
-    expect(result.negativePrompt).toBe('');
+    expect(result.prompt).toContain('A sunny park scene');
   });
 
   it('合成結果が3800文字以内に収まること', () => {
     const character = createValidCharacter();
     const longPrompt = 'A'.repeat(4000);
-    const result = composeImagePrompt(longPrompt, character);
+    const result = composeImagePrompt(longPrompt, character, 'illustration');
 
     expect(result.prompt.length).toBeLessThanOrEqual(3800);
   });
 
   it('consistencyKeywordsが合成結果に含まれること', () => {
     const character = createValidCharacter();
-    const result = composeImagePrompt('test scene', character);
+    const result = composeImagePrompt('test scene', character, 'illustration');
 
     expect(result.prompt).toContain('chibi quetzalcoatlus');
     expect(result.prompt).toContain('oversized head');
@@ -198,7 +198,7 @@ describe('composeImagePrompt', () => {
 
   it('CRAFT分析フィールドが合成に含まれること', () => {
     const character = createValidCharacter();
-    const result = composeImagePrompt('test scene', character);
+    const result = composeImagePrompt('test scene', character, 'illustration');
 
     expect(result.prompt).toContain('warm earth tones');
     expect(result.prompt).toContain('clean digital illustration');
@@ -207,10 +207,65 @@ describe('composeImagePrompt', () => {
 
   it('styleModifiersが合成結果に含まれること', () => {
     const character = createValidCharacter();
-    const result = composeImagePrompt('test scene', character);
+    const result = composeImagePrompt('test scene', character, 'illustration');
 
     expect(result.prompt).toContain('soft lighting');
     expect(result.prompt).toContain('warm color palette');
+  });
+
+  // スタイル連携テスト
+  it('キャラクターなし + illustrationスタイル', () => {
+    const style = getStyle('illustration');
+    const result = composeImagePrompt('A sunny park scene', null, 'illustration');
+
+    expect(result.prompt).toContain(style.promptPrefix);
+    expect(result.prompt).toContain('A sunny park scene');
+    expect(result.negativePrompt).toContain(style.negativePrompt);
+  });
+
+  it('キャラクターなし + oilpaintingスタイル', () => {
+    const style = getStyle('oilpainting');
+    const result = composeImagePrompt('A sunny park scene', null, 'oilpainting');
+
+    expect(result.prompt).toContain(style.promptPrefix);
+    expect(result.prompt).toContain('A sunny park scene');
+    expect(result.negativePrompt).toContain(style.negativePrompt);
+  });
+
+  it('キャラクターあり + illustrationスタイル', () => {
+    const character = createValidCharacter();
+    const style = getStyle('illustration');
+    const result = composeImagePrompt('test scene', character, 'illustration');
+
+    expect(result.prompt).toContain('Art style:');
+    expect(result.prompt).toContain(style.promptPrefix);
+    expect(result.negativePrompt).toContain(character.imageGeneration.negativePrompt);
+    expect(result.negativePrompt).toContain(style.negativePrompt);
+  });
+
+  it('キャラクターあり + oilpaintingスタイル', () => {
+    const character = createValidCharacter();
+    const style = getStyle('oilpainting');
+    const result = composeImagePrompt('test scene', character, 'oilpainting');
+
+    expect(result.prompt).toContain('Art style:');
+    expect(result.prompt).toContain(style.promptPrefix);
+    expect(result.negativePrompt).toContain(character.imageGeneration.negativePrompt);
+    expect(result.negativePrompt).toContain(style.negativePrompt);
+  });
+
+  it('negativePromptマージ検証', () => {
+    const character = createValidCharacter();
+    const style = getStyle('oilpainting');
+    const result = composeImagePrompt('test scene', character, 'oilpainting');
+
+    // キャラクターとスタイルの両方のnegativePromptが含まれる
+    const charNeg = character.imageGeneration.negativePrompt;
+    const styleNeg = style.negativePrompt;
+    expect(result.negativePrompt).toContain(charNeg);
+    expect(result.negativePrompt).toContain(styleNeg);
+    // カンマで区切られていること
+    expect(result.negativePrompt).toBe(`${charNeg}, ${styleNeg}`);
   });
 });
 

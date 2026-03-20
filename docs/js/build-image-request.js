@@ -7,10 +7,11 @@
  * @param {string} [params.characterId] - キャラクターID
  * @returns {object} generate-image APIリクエストボディ
  */
-export function buildImageRequestBody({ date, imageToken, filePath, characterId, mode }) {
+export function buildImageRequestBody({ date, imageToken, filePath, characterId, mode, styleId }) {
   const body = { date, imageToken };
   if (filePath) body.filePath = filePath;
   if (characterId) body.characterId = characterId;
   if (mode && mode !== 'normal') body.mode = mode;
+  body.styleId = styleId;
   return body;
 }
