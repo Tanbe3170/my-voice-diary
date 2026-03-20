@@ -1,31 +1,31 @@
 ---
-title: "正解なんてないんだ"
+title: "正解なんてなくてもいい"
 date: 2026-03-20
-tags: ["#恐竜日記", "#DinoWorld", "#翼竜ライフ", "#ケッツの日常", "#研究生活"]
-image_prompt: "A friendly cartoon Quetzalcoatlus pterosaur with large wings sitting at a modern research desk in a university lab, surrounded by books and papers, looking thoughtful. The pterosaur has a gentle expression and is wearing small reading glasses. In the background, through a large window, you can see a modern city where humans and various evolved dinosaurs coexist peacefully. Warm afternoon lighting, detailed and whimsical art style."
+tags: ["#恐竜日記", "#DinoWorld", "#ケッツの空中散歩", "#翼竜の哲学", "#共存生活"]
+image_prompt: "A friendly cartoon Quetzalcoatlus pterosaur with large wings soaring gently above a modern city street, looking down at a human sitting at an outdoor cafe below. The pterosaur has kind, curious eyes and a warm expression. Modern buildings, cars, and people are visible in the urban scene below, with the giant flying reptile peacefully coexisting in the contemporary world. Soft afternoon lighting, detailed feathers and wing membranes, whimsical and heartwarming atmosphere."
 mode: "dino-story"
 ---
 
-# 正解なんてないんだ
+# 正解なんてなくてもいい
 
 ## 📅 2026-03-20
 
 ### 📖 サマリー
 
-研究で迷子になったボクに、アルベル先生が新しいアプローチを教えてくれた
-「まず飛んで、気付いて、修正する」って翼竜らしい方法があったんだ
-完璧を求めすぎていた自分を反省した一日だった
+人間たちを見ていて気づいた大切なこと
+完璧な答えを探すより行動が大事なんだ
+空から学んだ人生の飛び方を教えてもらった
 
 ---
 
-今日は研究所で大きな気付きがあった日だった。
+今日は久しぶりに街の上空をゆっくりと旋回していた。下を見下ろしていると、いつものカフェのテラスで悩んでいる人間がいるのが見えたんだ。
 
-最近、古代翼竜の飛行パターンについての論文でずっと悩んでいたのだ。資料ばかり読み漁って、完璧な理論を見つけようと一生懸命探していたのだけれど、どうにも答えが見つからない。アルベルトサウルス先生に相談したところ、「ケッツ君、正解がないことのほうが多いのかもしれないよ」と言われてハッとした。
+最近ボクも同じようなことで悩んでいた。どの気流に乗れば一番効率よく飛べるのか、どのルートが正解なのか、一生懸命に考えていたんだよね。でも今日、その人間を見ていて気がついたんだ。正解がないことのほうが多いのかもしれないって。
 
-「まず飛んでみなさい。そして気付いて、修正していく。それが君たち翼竜の本来の姿じゃないか」と先生は続けた。確かに、ボクたちは理論より実践で空を覚えたのだった。
+ボクたち翼竜は本能で飛んでいるように見えるけれど、実は毎日が試行錯誤の連続なんだ。風向きは変わるし、気温も違う。完璧な飛行なんて存在しないんだよね。まず翼を広げて飛び立ち、風を感じ、軌道を修正していく。このアプローチのほうが向いているのかもしれない。
 
-午後、実際に空に出てみると、風の流れや気圧の変化が体で分かる。書物では学べない発見がいくつもあった。このアプローチのほうがボクには向いているのかもしれない。完璧な答えを求めすぎていたのかも知れないなあ。
+人間も翼竜も、生きることに正解なんてないんだな。大切なのは空に向かって羽ばたく勇気なのかもしれないよ。
 
 ---
 
-**Tags:** #恐竜日記 #DinoWorld #翼竜ライフ #ケッツの日常 #研究生活
+**Tags:** #恐竜日記 #DinoWorld #ケッツの空中散歩 #翼竜の哲学 #共存生活
