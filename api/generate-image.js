@@ -34,6 +34,16 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: '許可されていないメソッドです。' });
   }
 
+  // デッドライン管理（55秒デッドライン: maxDuration 60秒 - 5秒バッファ）
+  const deadline = Date.now() + 55_000;
+
+  // ヘルパー: 残り時間計算（post-instagram.js準拠: null返却で打ち切り判定）
+  function getRemainingTimeout(fixedLimit) {
+    const remaining = deadline - Date.now() - 1_000;
+    if (remaining <= 0) return null;
+    return Math.min(fixedLimit, remaining);
+  }
+
   try {
     // ===================================================================
     // 3. Content-Type検証
@@ -174,8 +184,13 @@ export default async function handler(req, res) {
     // fail-closed: Redis障害時は課金処理に進まず500エラーを返す
     let count;
     try {
+      const redisTimeout = getRemainingTimeout(5_000);
+      if (redisTimeout === null) {
+        return res.status(504).json({ error: '処理がタイムアウトしました。再度お試しください。' });
+      }
       const countRes = await fetch(`${UPSTASH_URL}/incr/${encodeURIComponent(key)}`, {
-        headers: { 'Authorization': `Bearer ${UPSTASH_TOKEN}` }
+        headers: { 'Authorization': `Bearer ${UPSTASH_TOKEN}` },
+        signal: AbortSignal.timeout(redisTimeout),
       });
 
       if (!countRes.ok) {
@@ -205,8 +220,13 @@ export default async function handler(req, res) {
     if (count === 1) {
       // 初回: TTL設定（24時間）
       try {
+        const expireTimeout = getRemainingTimeout(5_000);
+        if (expireTimeout === null) {
+          return res.status(504).json({ error: '処理がタイムアウトしました。再度お試しください。' });
+        }
         const expireRes = await fetch(`${UPSTASH_URL}/expire/${encodeURIComponent(key)}/86400`, {
-          headers: { 'Authorization': `Bearer ${UPSTASH_TOKEN}` }
+          headers: { 'Authorization': `Bearer ${UPSTASH_TOKEN}` },
+          signal: AbortSignal.timeout(expireTimeout),
         });
         if (!expireRes.ok) {
           console.error('Upstash expire HTTPエラー:', expireRes.status);
@@ -231,11 +251,16 @@ export default async function handler(req, res) {
     const diaryPath = filePath || `diaries/${year}/${month}/${date}.md`;
     const diaryApiUrl = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${diaryPath}`;
 
+    const diaryTimeout = getRemainingTimeout(10_000);
+    if (diaryTimeout === null) {
+      return res.status(504).json({ error: '処理がタイムアウトしました。再度お試しください。' });
+    }
     const diaryResponse = await fetch(diaryApiUrl, {
       headers: {
         'Authorization': `token ${GITHUB_TOKEN}`,
         'Accept': 'application/vnd.github.v3+json'
-      }
+      },
+      signal: AbortSignal.timeout(diaryTimeout),
     });
 
     if (!diaryResponse.ok) {
@@ -266,14 +291,22 @@ export default async function handler(req, res) {
     // 7.5. キャラクター設定読み込み（任意）
     // ===================================================================
 
-    // キャラクター読み込み（任意）+ スタイル適用
+    // キャラクター読み込み（任意、fail-open: タイムアウトしてもcharacter=nullで続行）
     let character = null;
-    if (characterId) {
-      character = await loadCharacter(characterId, {
-        token: GITHUB_TOKEN,
-        owner: GITHUB_OWNER,
-        repo: GITHUB_REPO,
-      });
+    const charTimeout = getRemainingTimeout(5_000);
+    if (characterId && charTimeout !== null) {
+      try {
+        character = await loadCharacter(characterId, {
+          token: GITHUB_TOKEN,
+          owner: GITHUB_OWNER,
+          repo: GITHUB_REPO,
+        }, {
+          signal: AbortSignal.timeout(charTimeout),
+        });
+      } catch (charErr) {
+        console.warn('キャラクター読み込み失敗（続行）:', charErr.message);
+        character = null;
+      }
     }
 
     // スタイル + キャラクター合成（キャラクターnullでもスタイルは適用される）
@@ -286,7 +319,7 @@ export default async function handler(req, res) {
     // 8. 画像生成（フォールバックチェーン: NB2 → NBpro → DALL-E 3）
     // ===================================================================
 
-    const { imageData, backend, model, modelId } = await generateImageWithFallback(composedPrompt, negativePrompt);
+    const { imageData, backend, model, modelId } = await generateImageWithFallback(composedPrompt, negativePrompt, deadline);
     const imageBase64 = imageData.toString('base64');
 
     // ===================================================================
@@ -305,11 +338,16 @@ export default async function handler(req, res) {
     // 既存ファイルのSHA取得（上書き時に必要）
     let imageSha;
     try {
+      const shaTimeout = getRemainingTimeout(5_000);
+      if (shaTimeout === null) {
+        return res.status(504).json({ error: '処理がタイムアウトしました。再度お試しください。' });
+      }
       const getResponse = await fetch(imageApiUrl, {
         headers: {
           'Authorization': `token ${GITHUB_TOKEN}`,
           'Accept': 'application/vnd.github.v3+json'
-        }
+        },
+        signal: AbortSignal.timeout(shaTimeout),
       });
       if (getResponse.ok) {
         const data = await getResponse.json();
@@ -328,6 +366,10 @@ export default async function handler(req, res) {
       imageBody.sha = imageSha;
     }
 
+    const pushTimeout = getRemainingTimeout(10_000);
+    if (pushTimeout === null) {
+      return res.status(504).json({ error: '処理がタイムアウトしました。再度お試しください。' });
+    }
     const pushResponse = await fetch(imageApiUrl, {
       method: 'PUT',
       headers: {
@@ -335,7 +377,8 @@ export default async function handler(req, res) {
         'Accept': 'application/vnd.github.v3+json',
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(imageBody)
+      body: JSON.stringify(imageBody),
+      signal: AbortSignal.timeout(pushTimeout),
     });
 
     if (!pushResponse.ok) {
@@ -381,8 +424,23 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('サーバーエラー:', error);
+
+    // タイムアウト系エラーは504、その他は500
+    if (isTimeoutError(error)) {
+      return res.status(504).json({
+        error: '画像生成がタイムアウトしました。再度お試しください。'
+      });
+    }
+
     return res.status(500).json({
       error: '画像の生成中にエラーが発生しました。しばらくしてから再度お試しください。'
     });
   }
+}
+
+// タイムアウトエラー判定ヘルパー
+function isTimeoutError(err) {
+  if (err.name === 'AbortError' || err.name === 'TimeoutError') return true;
+  if (err.code === 'DEADLINE_EXCEEDED' || err.code === 'GEMINI_TIMEOUT') return true;
+  return false;
 }

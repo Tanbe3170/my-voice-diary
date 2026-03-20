@@ -467,7 +467,8 @@ export default async function handler(req, res) {
       }
     }
 
-    // Claude APIにリクエスト送信
+    // Claude APIにリクエスト送信（25秒タイムアウト: Vercel 30秒 - 5秒バッファ）
+    const claudeStart = Date.now();
     const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -479,8 +480,10 @@ export default async function handler(req, res) {
         model: 'claude-sonnet-4-20250514',
         max_tokens: 2000,
         messages: [{ role: 'user', content: claudePrompt }]
-      })
+      }),
+      signal: AbortSignal.timeout(25_000),
     });
+    console.log(`Claude API応答時間: ${Date.now() - claudeStart}ms`);
 
     // Claude APIのレスポンス確認
     if (!claudeResponse.ok) {
@@ -496,6 +499,7 @@ export default async function handler(req, res) {
     // レスポンスからテキストを取得
     const claudeData = await claudeResponse.json();
     const responseText = claudeData.content[0].text;
+    console.log(`Claude出力長: ${responseText.length}文字`);
 
     // JSONを抽出（```json ... ``` または {...} を探す）
     const jsonMatch = responseText.match(/```json\s*(\{.*?\})\s*```/s) ||
@@ -550,11 +554,12 @@ export default async function handler(req, res) {
         errors.push('tagsの要素が不正です（各30文字以内のstring）');
       }
 
-      // image_prompt検証（string、1-500文字）
+      // image_prompt検証（string、1-500文字）— 欠落時はフォールバック
       if (!data.image_prompt || typeof data.image_prompt !== 'string') {
-        errors.push('image_promptが不正です');
+        data.image_prompt = `A diary illustration about: ${data.title}`;
+        console.warn('image_prompt欠落、フォールバック使用:', data.image_prompt);
       } else if (data.image_prompt.length > 500) {
-        errors.push('image_promptが長すぎます（500文字以内）');
+        data.image_prompt = data.image_prompt.substring(0, 500);
       }
 
       return errors;

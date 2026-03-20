@@ -7,8 +7,11 @@
     }
   ],
   "functions": {
-    "api/generate-image.js": {
+    "api/create-diary.js": {
       "maxDuration": 30
+    },
+    "api/generate-image.js": {
+      "maxDuration": 60
     },
     "api/post-instagram.js": {
       "maxDuration": 30

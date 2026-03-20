@@ -745,14 +745,15 @@ describe('generate-image API', () => {
         token: 'ghp_test',
         owner: 'TestOwner',
         repo: 'test-repo',
-      }));
+      }), expect.objectContaining({ signal: expect.anything() }));
       // composeImagePromptが呼ばれたことを検証
       expect(mockComposeImagePrompt).toHaveBeenCalledTimes(1);
       expect(mockComposeImagePrompt).toHaveBeenCalledWith('A sunny day at the park', mockCharacter, 'illustration');
-      // generateImageWithFallbackが合成プロンプトで呼ばれたことを検証
+      // generateImageWithFallbackが合成プロンプトで呼ばれたことを検証（deadline付き）
       expect(mockGenerateImageWithFallback).toHaveBeenCalledWith(
         'composed: A sunny day at the park with cute dinosaur character',
         'realistic, photo',
+        expect.any(Number),
       );
       // レスポンスにcharacterIdが含まれること
       expect(res._json.characterId).toBe('dino');
@@ -809,10 +810,11 @@ describe('generate-image API', () => {
       expect(mockLoadCharacter).toHaveBeenCalledTimes(1);
       // composeImagePromptがnullキャラクター + styleIdで呼ばれることを検証
       expect(mockComposeImagePrompt).toHaveBeenCalledWith('A sunny day at the park', null, 'illustration');
-      // generateImageWithFallbackはスタイル適用済みプロンプトで呼ばれることを検証
+      // generateImageWithFallbackはスタイル適用済みプロンプトで呼ばれることを検証（deadline付き）
       expect(mockGenerateImageWithFallback).toHaveBeenCalledWith(
         'styled(illustration): A sunny day at the park',
         'style-negative',
+        expect.any(Number),
       );
     });
 
@@ -1017,6 +1019,162 @@ describe('generate-image API', () => {
       await handler(req, res);
       expect(res._status).toBe(401);
       expect(res._json.error).toContain('認証');
+    });
+  });
+
+  // =================================================================
+  // テスト8: タイムアウト・デッドライン管理
+  // =================================================================
+  describe('タイムアウト・デッドライン管理', () => {
+    // 正常フローの共通fetchモック（Upstash + GitHub APIのみ）
+    function createTimeoutFetchMock() {
+      return vi.fn(async (url) => {
+        if (url.includes('upstash') && url.includes('incr')) {
+          return { ok: true, json: async () => ({ result: 1 }) };
+        }
+        if (url.includes('upstash') && url.includes('expire')) {
+          return { ok: true, json: async () => ({ result: 1 }) };
+        }
+        if (url.includes('api.github.com') && url.includes('contents/diaries')) {
+          const content = Buffer.from(
+            '---\nimage_prompt: "A test image prompt"\n---\n# Test',
+            'utf-8'
+          ).toString('base64');
+          return { ok: true, json: async () => ({ content, sha: 'abc123' }) };
+        }
+        if (url.includes('api.github.com') && url.includes('contents/docs/images')) {
+          return { ok: true, json: async () => ({ content: {} }) };
+        }
+        return { ok: true, json: async () => ({}) };
+      });
+    }
+
+    it('generateImageWithFallbackのAbortError → 504を返す', async () => {
+      globalThis.fetch = createTimeoutFetchMock();
+
+      const abortError = new Error('Aborted');
+      abortError.name = 'AbortError';
+      mockGenerateImageWithFallback.mockRejectedValueOnce(abortError);
+
+      const req = createMockReq();
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(504);
+      expect(res._json.error).toContain('タイムアウト');
+    });
+
+    it('DEADLINE_EXCEEDED → 504を返す', async () => {
+      globalThis.fetch = createTimeoutFetchMock();
+
+      const deadlineError = new Error('画像生成のタイムアウト: 残り時間なし');
+      deadlineError.code = 'DEADLINE_EXCEEDED';
+      mockGenerateImageWithFallback.mockRejectedValueOnce(deadlineError);
+
+      const req = createMockReq();
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(504);
+      expect(res._json.error).toContain('タイムアウト');
+    });
+
+    it('GEMINI_TIMEOUT → 504を返す', async () => {
+      globalThis.fetch = createTimeoutFetchMock();
+
+      const geminiError = new Error('Gemini タイムアウト');
+      geminiError.code = 'GEMINI_TIMEOUT';
+      mockGenerateImageWithFallback.mockRejectedValueOnce(geminiError);
+
+      const req = createMockReq();
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(504);
+      expect(res._json.error).toContain('タイムアウト');
+    });
+
+    it('TimeoutError → 504を返す', async () => {
+      globalThis.fetch = createTimeoutFetchMock();
+
+      const timeoutError = new Error('Timeout');
+      timeoutError.name = 'TimeoutError';
+      mockGenerateImageWithFallback.mockRejectedValueOnce(timeoutError);
+
+      const req = createMockReq();
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(504);
+      expect(res._json.error).toContain('タイムアウト');
+    });
+
+    it('通常エラー（タイムアウト以外） → 500を返す', async () => {
+      globalThis.fetch = createTimeoutFetchMock();
+
+      mockGenerateImageWithFallback.mockRejectedValueOnce(new Error('API key invalid'));
+
+      const req = createMockReq();
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(500);
+      expect(res._json.error).not.toContain('タイムアウト');
+    });
+
+    it('loadCharacter失敗時に504にマップされない（fail-open）', async () => {
+      globalThis.fetch = createTimeoutFetchMock();
+
+      const abortError = new Error('Aborted');
+      abortError.name = 'AbortError';
+      mockLoadCharacter.mockRejectedValueOnce(abortError);
+      mockGenerateImageWithFallback.mockResolvedValueOnce({
+        imageData: Buffer.from('fake-png'),
+        backend: 'dalle',
+        model: 'DALL-E 3',
+        modelId: 'dall-e-3',
+      });
+
+      const req = createMockReq({
+        body: {
+          date: '2026-02-19',
+          imageToken: createValidToken('2026-02-19', undefined, 'dino', 'dino-story'),
+          characterId: 'dino',
+          mode: 'dino-story',
+          styleId: 'illustration',
+        },
+      });
+      const res = createMockRes();
+      await handler(req, res);
+
+      // 504ではなく200（画像生成は成功）
+      expect(res._status).toBe(200);
+      // キャラクターなしで画像生成が実行された
+      expect(mockComposeImagePrompt).toHaveBeenCalledWith(
+        expect.any(String), null, 'illustration'
+      );
+    });
+
+    it('generateImageWithFallbackにdeadlineが渡されること', async () => {
+      globalThis.fetch = createTimeoutFetchMock();
+      mockGenerateImageWithFallback.mockResolvedValueOnce({
+        imageData: Buffer.from('fake-png'),
+        backend: 'dalle',
+        model: 'DALL-E 3',
+        modelId: 'dall-e-3',
+      });
+
+      const req = createMockReq();
+      const res = createMockRes();
+      await handler(req, res);
+
+      expect(res._status).toBe(200);
+      // 第3引数がdeadline（number）であることを確認
+      const callArgs = mockGenerateImageWithFallback.mock.calls[0];
+      expect(callArgs.length).toBe(3);
+      expect(typeof callArgs[2]).toBe('number');
+      // deadlineはDate.now()より未来
+      expect(callArgs[2]).toBeGreaterThan(Date.now());
     });
   });
 });

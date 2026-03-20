@@ -190,6 +190,68 @@ describe('generateImageWithFallback', () => {
   });
 });
 
+describe('generateImageWithFallback (deadline)', () => {
+  it('AbortError時に次のバックエンドへフォールバック', async () => {
+    const abortError = new Error('Aborted');
+    abortError.name = 'AbortError';
+    mockGenerateContent
+      .mockRejectedValueOnce(abortError) // NB2 timeout
+      .mockResolvedValueOnce(geminiSuccessResponse()); // NBpro success
+
+    const result = await generateImageWithFallback('test prompt', 'negative');
+    expect(result.model).toBe('NBpro');
+  });
+
+  it('全バックエンドタイムアウト時にタイムアウトエラーをthrow', async () => {
+    const abortError1 = new Error('Aborted');
+    abortError1.name = 'AbortError';
+    const abortError2 = new Error('Aborted');
+    abortError2.name = 'AbortError';
+    mockGenerateContent
+      .mockRejectedValueOnce(abortError1)
+      .mockRejectedValueOnce(abortError2);
+
+    const dalleAbort = new Error('Aborted');
+    dalleAbort.name = 'AbortError';
+    global.fetch = vi.fn().mockRejectedValueOnce(dalleAbort);
+
+    await expect(generateImageWithFallback('test prompt', '')).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+  });
+
+  it('deadline超過で即エラー（試行せず）', async () => {
+    const pastDeadline = Date.now() - 1000;
+
+    await expect(generateImageWithFallback('test prompt', '', pastDeadline)).rejects.toMatchObject({
+      code: 'DEADLINE_EXCEEDED',
+    });
+    // バックエンドが呼ばれていないことを確認
+    expect(mockGenerateContent).not.toHaveBeenCalled();
+  });
+
+  it('残時間減衰: 1回目で時間消費後、2回目試行前にdeadline超過で即時失敗', async () => {
+    // NB2で時間消費するモック（100ms遅延後失敗）
+    mockGenerateContent.mockImplementationOnce(async () => {
+      await new Promise(r => setTimeout(r, 100));
+      throw new Error('NB2 error');
+    });
+
+    // deadlineを設定: MARGIN(2000ms) + 150ms = 2150ms
+    // NB2の100ms消費後、残り = 2150 - 100 - 2000 = 50ms → 正だがNBproの前に残り再計算で十分少ない
+    // → NBproの前: remaining = deadline - now - MARGIN → 2150 - ~100消費 - 2000 ≈ 50ms
+    // NBproは50ms以内で呼ばれるはずなので、さらにタイトにする
+    // deadline = now + 2100 → NB2 100ms消費 → remaining = 2100 - 100 - 2000 = 0 → ≤ 0 → DEADLINE_EXCEEDED
+    const tightDeadline = Date.now() + 2_100;
+
+    await expect(generateImageWithFallback('test prompt', 'neg', tightDeadline)).rejects.toMatchObject({
+      code: 'DEADLINE_EXCEEDED',
+    });
+    // NB2は呼ばれたがNBproは呼ばれていない
+    expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('sanitizeError', () => {
   it('APIキーがエラーメッセージから除去される', () => {
     const result = sanitizeError('Error with key abc123xyz in request', 'abc123xyz');

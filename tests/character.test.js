@@ -157,6 +157,31 @@ describe('loadCharacter', () => {
     expect(result).toBeNull();
     expect(global.fetch).not.toHaveBeenCalled();
   });
+
+  it('signal付きfetchが正常動作すること', async () => {
+    const character = createValidCharacter();
+    global.fetch = vi.fn().mockResolvedValueOnce(githubApiResponse(character));
+    const ac = new AbortController();
+
+    const result = await loadCharacter('quetz-default', githubConfig, { signal: ac.signal });
+
+    expect(result).not.toBeNull();
+    expect(result.id).toBe('quetz-default');
+    // fetchにsignalが渡されていることを確認
+    const fetchOpts = global.fetch.mock.calls[0][1];
+    expect(fetchOpts.signal).toBe(ac.signal);
+  });
+
+  it('signal未指定時はfetchにsignalが含まれないこと', async () => {
+    const character = createValidCharacter();
+    global.fetch = vi.fn().mockResolvedValueOnce(githubApiResponse(character));
+
+    const result = await loadCharacter('quetz-default', githubConfig);
+
+    expect(result).not.toBeNull();
+    const fetchOpts = global.fetch.mock.calls[0][1];
+    expect(fetchOpts.signal).toBeUndefined();
+  });
 });
 
 // ===================================================================
