@@ -1,593 +1,312 @@
-# 画像生成スタイル強化計画
+# 画像スタイル強化 実装計画書
 
 ## 概要
 
-日記の画像生成システムに以下の2つの改善を施す：
+日記画像生成の2つのスタイル（イラスト調・油絵調）のプロンプトを、参考画像の作風に近づけるよう改善する。
+加えて、全スタイル共通で「現代的な風景を避ける」制約を実装する。
 
-1. **スタイル選択機能**: フラットイラスト調（サンプル画像参照）または油絵調を選択可能にする
-2. **内容伝達力の向上**: 日記の内容がひと目で読み手に伝わる画像を生成する
+### 参考画像の作風分析
 
-## 現状分析
+**イラスト調（PteroSample.jpeg準拠）:**
+- フラットイラスト、太い形状、幾何学的な単純化
+- 限定カラーパレット（ティール青、暖かみのある茶/赤、クリーム）
+- 古生物学的な正確さを保った形状の単純化
+- 教育的・インフォグラフィック的な明快さ
+- テクスチャ感のある粒状表面（グレイン）
 
-### 画像生成フロー（現在）
+**油絵調（Pablo Rivera氏のパレオアート準拠）:**
+- **媒体はアクリル**（油絵ではない） — 柔らかく抑制された筆跡
+- 落ち着いたナチュラルな色彩（彩度は中〜低） — 金色/琥珀色、アースカラー主体
+- ゴールデンアワーの劇的なライティング（逆光、光の散乱）
+- 大気遠近法による奥行き表現（遠方の彩度低下、寒色シフト）
+- 生物と環境の一体的統合（被写体は風景の一部として描写）
+- 環境ストーリーテリング（地質・植物の詳細で場所を物語る）
 
-```
-ユーザー入力 → Claude API（image_prompt生成） → Markdown保存
-  → generate-image API → GitHub読み込み → image_prompt抽出
-  → composeImagePrompt()（キャラクター合成） → NB2/NBpro/DALL-E 3
-```
+### 現行プロンプトの課題
 
-### 現在の問題点
+| 項目 | 現行（illustration） | 問題点 |
+|------|---------------------|--------|
+| promptPrefix | `Flat illustration style with bold thick outlines...` | 概ね正確だが、古生物学的正確さ・教育的明快さが欠落 |
+| claudeInstruction | フラットイラスト調の指示 | 現代風景の排除指示が未記載 |
 
-1. **スタイル制御が不十分**
-   - Claudeへの指示が「画像プロンプトは情景が浮かぶような具体的な英語で記述」のみ
-   - NB2（Gemini）へのスタイル指示がプロンプト内テキストのみ（APIパラメータなし）
-   - キャラクターモードのstyleModifiersは `["soft lighting", "warm color palette", ...]` で具体的な画風指定がない
-
-2. **内容伝達力が低い**
-   - image_promptが抽象的（例: "A person standing at a crossroads..."）
-   - 日記の具体的なエピソードではなく、テーマの比喩表現になりがち
-   - キャラクターなし時は「A person」という汎用的な被写体
-
-3. **スタイル選択UIなし**
-   - フロントエンドにスタイル選択の仕組みがない
-
-### デフォルト画像生成バックエンド
-
-**NB2（Gemini 3.1 Flash Image Preview）がプライマリ**。フォールバックチェーン:
-1. NB2（Gemini） ← デフォルト
-2. NBpro（Gemini）
-3. DALL-E 3（2026年5月12日廃止予定）
-
-Gemini APIはスタイルパラメータを持たないため、**プロンプト内でのスタイル制御が主要手段**。
+| 項目 | 現行（oilpainting） | 問題点 |
+|------|---------------------|--------|
+| promptPrefix | `Oil painting style with visible thick impasto brushstrokes, rich saturated colors...` | **3つの重大な誤り**: (1) 油絵→アクリル (2) 厚塗りインパスト→柔らかい筆跡 (3) 鮮やかな彩度→落ち着いたナチュラルカラー |
+| negativePrompt | `photorealistic, flat, vector, cartoon, digital, clean lines` | 不足: 現代的要素の排除が欠落 |
+| claudeInstruction | 油絵調の指示 | 環境統合・大気遠近法・行動描写の指示が欠落 |
 
 ---
 
-## 修正計画
+## 変更対象ファイル一覧
 
-### Phase 1: スタイル定義とプロンプトテンプレート設計
+| # | ファイル | 変更内容 | リスク |
+|---|---------|---------|--------|
+| 1 | `lib/image-styles.js` | promptPrefix, negativePrompt, claudeInstruction の全面改訂 | 低（テスト修正で対応） |
+| 2 | `lib/character.js` | `composeImagePrompt`にプロンプト長ガード追加 | 低 |
+| 3 | `lib/image-backend.js` | `generateWithDalle`にDALL-E 3専用プロンプト切り詰め（1000文字）追加 | 低 |
+| 4 | `tests/image-styles.test.js` | アサーション文字列の更新 | 低 |
+| 5 | `tests/create-diary-dino.test.js` | L353 `'油絵調'` → claudeInstruction動的取得に変更 | 低 |
+| 6 | `tests/character.test.js` | プロンプト長警告テスト追加（キャラクターあり/なし両パス） | 低 |
+| 7 | `tests/image-backend.test.js` | DALL-E 3プロンプト切り詰めテスト追加 | 低 |
+| 8 | `docs/diary-input.html` | UI表示名「油絵調」→「パレオアート調」 | 低 |
 
-#### 1.1 スタイル定義ファイル作成
+**変更不要ファイル:** `api/generate-image.js`, `api/create-diary.js`
+→ これらはstyleIdで間接参照しており、スタイル定義の内容変更の影響を受けない
 
-**新規ファイル:** `api/lib/image-styles.js`
+---
+
+## 詳細変更仕様
+
+### 1. `lib/image-styles.js` — スタイル定義の改訂
+
+#### 1.1 illustration（フラットイラスト）
 
 ```javascript
-// 画像生成スタイル定義
-export const IMAGE_STYLES = {
-  illustration: {
-    name: 'フラットイラスト',
-    promptPrefix: 'Flat illustration style with bold thick outlines, simple geometric shapes, limited warm color palette, subtle grain texture, clean composition, modern graphic design aesthetic, no photorealism',
-    negativePrompt: 'photorealistic, 3D render, photograph, blurry, gradient heavy',
-    claudeInstruction: '画像プロンプトは、フラットイラスト調（太い輪郭線、シンプルな形状、限定カラーパレット）で映える具体的なワンシーンを英語で記述。抽象的な比喩ではなく、日記の中核エピソードを1つの印象的な場面として描写すること。',
-  },
-  oilpainting: {
-    name: '油絵',
-    promptPrefix: 'Oil painting style with visible thick impasto brushstrokes, rich saturated colors, oil on canvas texture, warm dramatic lighting, painterly quality, artistic composition',
-    negativePrompt: 'photorealistic, flat, vector, cartoon, digital, clean lines',
-    claudeInstruction: '画像プロンプトは、油絵調（厚塗りの筆跡、濃厚な色彩、キャンバス質感）で映える具体的なワンシーンを英語で記述。抽象的な比喩ではなく、日記の中核エピソードを1つの印象的な場面として描写すること。',
-  },
-};
-
-export const DEFAULT_STYLE = 'illustration';
-
-/**
- * styleIdからスタイル定義を取得する（フォールバックなし）
- * @param {string} styleId
- * @returns {object|null} スタイル定義。不明なstyleIdはnullを返す
- */
-export function getStyle(styleId) {
-  return IMAGE_STYLES[styleId] || null;
-}
-
-/**
- * styleIdのバリデーション（ホワイトリスト方式）
- * @param {string} styleId
- * @returns {boolean}
- */
-export function isValidStyleId(styleId) {
-  return typeof styleId === 'string' && styleId in IMAGE_STYLES;
-}
-
-export function getStylePromptPrefix(styleId) {
-  return getStyle(styleId).promptPrefix;
-}
-
-export function getStyleNegativePrompt(styleId) {
-  return getStyle(styleId).negativePrompt;
-}
-
-export function getStyleClaudeInstruction(styleId) {
-  return getStyle(styleId).claudeInstruction;
-}
+illustration: {
+  name: 'フラットイラスト',
+  promptPrefix: 'Flat illustration style with bold geometric shapes and thick clean outlines, limited warm color palette of teal blue and earthy brown-red and cream, subtle paper grain texture, clean composition with paleontological accuracy in simplified forms, educational infographic clarity, set in a timeless prehistoric or natural landscape with no modern elements',
+  negativePrompt: 'photorealistic, 3D render, photograph, blurry, gradient heavy, modern buildings, cars, roads, power lines, smartphones, contemporary architecture',
+  claudeInstruction: '画像プロンプトは、フラットイラスト調（太い輪郭線、幾何学的に単純化された形状、ティール青・茶赤・クリームの限定パレット、古生物学的な正確さ）で映える具体的なワンシーンを英語で記述。現代的な風景（ビル、車、電線、スマートフォン）は避け、太古の自然や素朴な風景を背景にすること。抽象的な比喩ではなく、日記の中核エピソードを1つの印象的な場面として描写すること。',
+},
 ```
 
-#### 1.2 サンプル画像の作風分析に基づくイラスト調プロンプト
+**変更点:**
+- `promptPrefix`: 「paleontological accuracy in simplified forms」「educational infographic clarity」追加。パレット色名を具体化（teal blue, earthy brown-red, cream）。「timeless prehistoric or natural landscape with no modern elements」追加
+- `negativePrompt`: 現代的要素（modern buildings, cars, roads, power lines, smartphones, contemporary architecture）追加
+- `claudeInstruction`: 現代風景排除の明示指示を追加
 
-参照画像（PteroSample.jpeg）の特徴:
-- **線画**: 太くクリーンな輪郭線、エッジがシャープ
-- **着色**: フラットカラーに微細なグラデーション、暖色系（ティール、ブラウン、クリーム）
-- **形状**: 誇張されたプロポーション、シンプルな幾何学的形状
-- **質感**: 微細なグレインテクスチャ、紙のような質感
-- **構図**: 被写体中心、白背景、テキスト配置あり
-- **雰囲気**: モダンでスタイリッシュ、フレンドリー
+**文字数確認（promptPrefix）:** 約280文字 — DALL-E 3の1000文字制限内
 
-この分析をプロンプトに反映済み。
-
----
-
-### Phase 2: Claude APIプロンプト改修（create-diary.js）
-
-#### 2.1 image_prompt生成指示の強化
-
-**変更対象:** `api/create-diary.js`
-
-##### 2.1.1 JSON_OUTPUT_SCHEMA関数の修正
-
-現在の `image_prompt` フィールド説明:
-```
-"image_prompt": "この日記から1枚の画像を生成するための英語プロンプト（DALL-E用、詳細に）"
-```
-
-修正後（スタイル対応 + 内容伝達強化）:
-```
-"image_prompt": "この日記の中核エピソードを1つの具体的な場面として描写する英語プロンプト（AI画像生成用）。抽象的な比喩や概念図ではなく、読者が画像を見ただけで日記の内容がわかるような印象的なワンシーンを詳細に記述する。被写体の行動・表情・場所・時間帯・周辺のディテールを具体的に含めること。"
-```
-
-##### 2.1.2 buildNormalPrompt関数の修正
-
-整形ルール6番を強化:
-```
-現在: 6. 画像プロンプトは情景が浮かぶような具体的な英語で記述
-修正: 6. 画像プロンプトは日記の中核エピソードを1つの具体的なシーンとして英語で記述する。「A person at a crossroads」のような抽象的比喩ではなく、「A woman laughing while her cat knocks over a coffee cup at a sunny kitchen table」のような具体的場面を描写すること。読者が画像だけで日記の内容を推測できるレベルの具体性が必要。
-```
-
-##### 2.1.3 buildDinoStoryPrompt関数の修正
-
-整形ルール5番を強化:
-```
-現在: 5. image_promptは「恐竜が現代にいる」情景を具体的に描写する
-修正: 5. image_promptは日記の中核エピソードに恐竜を組み込んだ具体的なワンシーンを英語で記述する。読者が画像だけで日記の内容を推測できるレベルの具体性が必要。
-```
-
-#### 2.2 styleIdの受け渡し
-
-**フロー:**
-```
-フロントエンド（styleId選択）
-  → create-diary API（styleId受信 → Claudeプロンプトに反映 → レスポンスに含める）
-  → generate-image API（styleId受信 → プロンプト合成に使用）
-```
-
-##### 2.2.1 create-diary.jsの変更
-
-1. リクエストボディから `styleId` を受け取る（**必須パラメータ**: 未指定時は400エラー）
-2. `styleId` のバリデーション（`IMAGE_STYLES` のキーに含まれるかチェック、不正値・未指定は400エラー）
-3. Claude APIプロンプトにスタイル固有の指示を注入
-4. **レスポンスに必ず `styleId` を含める**（フロントがgenerate-imageに伝搬するため。フロントUI既定値として `illustration` が送信されるので、レスポンスにもその値が返る）
-5. **imageTokenのHMAC署名に `styleId` を常に明示的に含める**（改ざん防止、省略不可）
-
-##### 2.2.2 HMAC署名の変更
-
-現在のペイロード: `date:filePath:characterId:mode:timestamp`
-修正後: `date:filePath:characterId:mode:styleId:timestamp`
-
-**HMAC計算の共通化:** create-diary.js と generate-image.js の両方で同一のペイロード構築ロジックを使用するため、共通ユーティリティ関数を `api/lib/image-token.js` に切り出す:
+#### 1.2 oilpainting（パレオアート・アクリル画）
 
 ```javascript
-// api/lib/image-token.js
-import crypto from 'crypto';
-
-/**
- * imageToken用のHMACペイロードを構築する（create/generate共通）
- * styleIdは常に明示的に含める（省略不可）
- */
-/**
- * imageToken用のHMACペイロードを構築する（create/generate共通）
- * 全パラメータは呼び出し元で必須検証済みであること（デフォルト補完なし）
- * @throws {Error} 必須パラメータ（date, styleId, timestamp）が欠落時
- */
-export function buildTokenPayload({ date, filePath, characterId, mode, styleId, timestamp }) {
-  if (!date || !styleId || !timestamp) {
-    throw new Error('buildTokenPayload: date, styleId, timestamp are required');
-  }
-  const parts = [date];
-  if (filePath) parts.push(filePath);
-  parts.push(characterId || '', mode || 'normal', styleId, String(timestamp));
-  return parts.join(':');
-}
-
-export function generateImageToken(params, secret) {
-  const payload = buildTokenPayload(params);
-  const hmac = crypto.createHmac('sha256', secret).update(payload).digest('hex');
-  return `${params.timestamp}:${hmac}`;
-}
-
-/**
- * imageTokenの検証（fail-closed設計）
- *
- * 検証手順:
- * 1. imageToken形式検証: "timestamp:hmac" 形式であること
- * 2. timestamp: 数値文字列であること
- * 3. hmac: 64文字のhex文字列であること（SHA-256）
- * 4. TTL検証: 5分以内であること
- * 5. HMAC再計算 + timingSafeEqual比較
- *
- * 異常系はすべて { valid: false, reason } を返す（例外を外に出さない）
- * @returns {{ valid: boolean, reason?: string, timestamp?: number }}
- */
-export function verifyImageToken(imageToken, params, secret) {
-  // 1. 形式検証
-  if (typeof imageToken !== 'string') {
-    return { valid: false, reason: 'token_not_string' };
-  }
-  const colonIdx = imageToken.indexOf(':');
-  if (colonIdx === -1) {
-    return { valid: false, reason: 'token_format_invalid' };
-  }
-  const tsStr = imageToken.slice(0, colonIdx);
-  const providedHmac = imageToken.slice(colonIdx + 1);
-
-  // 2. timestamp検証
-  const ts = Number(tsStr);
-  if (!Number.isFinite(ts) || ts <= 0) {
-    return { valid: false, reason: 'timestamp_invalid' };
-  }
-
-  // 3. hmac形式検証（SHA-256 = 64文字hex）
-  if (!/^[0-9a-f]{64}$/.test(providedHmac)) {
-    return { valid: false, reason: 'hmac_format_invalid' };
-  }
-
-  // 4. TTL検証（5分 = 300,000ms）
-  if (Date.now() - ts > 300_000) {
-    return { valid: false, reason: 'token_expired' };
-  }
-
-  // 5. HMAC再計算 + timingSafeEqual
-  try {
-    const payload = buildTokenPayload({ ...params, timestamp: tsStr });
-    const expectedHmac = crypto.createHmac('sha256', secret).update(payload).digest('hex');
-    const valid = crypto.timingSafeEqual(
-      Buffer.from(providedHmac, 'hex'),
-      Buffer.from(expectedHmac, 'hex')
-    );
-    return { valid, timestamp: ts, reason: valid ? undefined : 'hmac_mismatch' };
-  } catch {
-    return { valid: false, reason: 'verification_error' };
-  }
-}
+oilpainting: {
+  name: 'パレオアート',
+  promptPrefix: 'Acrylic paleoart painting style with soft layered brushwork and restrained visible strokes, muted naturalistic earth-tone palette dominated by golden amber and warm ochre with cool blue-grey atmospheric accents, golden-hour directional lighting with atmospheric haze and backlighting, creatures naturally integrated into rich prehistoric ecosystem context showing behavioral interaction, deep atmospheric perspective with foreground botanical detail fading to desaturated cool distant landscape, environmental storytelling through geological and botanical elements, set in an ancient undisturbed wilderness',
+  negativePrompt: 'photorealistic, flat, vector, cartoon, digital, clean lines, vibrant saturated colors, modern buildings, cars, roads, power lines, contemporary infrastructure, thick impasto texture',
+  claudeInstruction: '画像プロンプトは、パレオアート調（アクリル画風の柔らかい筆跡、金色・琥珀色・アースカラーの落ち着いた自然色、ゴールデンアワーの劇的な照明、大気遠近法による奥行き）で映える具体的なワンシーンを英語で記述。生物は風景の一部として自然に統合し、行動的な文脈（捕食、移動、群れの交流）を含めること。現代的な風景（ビル、車、電線、スマートフォン）は避け、太古の原生自然を背景にすること。抽象的な比喩ではなく、日記の中核エピソードを環境ストーリーテリング（地質・植生の詳細）を含む1つの場面として描写すること。',
+},
 ```
 
-これにより、create-diary.js と generate-image.js 間のペイロード不一致リスクを構造的に排除する。
+**変更点:**
+- `name`: 「油絵」→「パレオアート」（実際のmediumに合わせ、UI上の表示名も変更）
+- `promptPrefix`: 全面改訂。油絵→アクリル、インパスト→柔らかい筆跡、鮮やかな彩度→落ち着いたアースカラー。大気遠近法、ゴールデンアワー、環境統合、行動的文脈を追加。「ancient undisturbed wilderness」で現代風景を排除
+- `negativePrompt`: 「vibrant saturated colors」「thick impasto texture」「modern buildings, cars, roads, power lines, contemporary infrastructure」追加
+- `claudeInstruction`: 環境統合・行動描写・大気遠近法・環境ストーリーテリングの指示を追加。現代風景排除を明記
 
-#### 2.3 スタイル指示の注入ポイント
+**文字数確認（promptPrefix）:** 約520文字 — DALL-E 3の1000文字制限内（composeImagePrompt合成後も余裕あり）
+
+### 2. `lib/character.js` — プロンプト長ガード追加
+
+#### 2.1 `composeImagePrompt` のプロンプト長安全対策
+
+**現状:** キャラクター合成時のみ `.slice(0, 3800)` があるが、以下の問題がある：
+- キャラクターなしパス（`style.promptPrefix + ". " + diaryImagePrompt`）に長さ制限がない
+- DALL-E 3の制限は1000文字だが、Geminiはより長いプロンプトを受け付ける
+- 画像バックエンド側（`image-backend.js`）で切り詰めるのが適切だが、現行設計ではバックエンド選択前にプロンプトが合成済み
+
+**対策（2段構え）:**
+
+**(a) `composeImagePrompt` での警告ログ:** 両パス（キャラクターあり/なし）で900文字超の場合に警告。Geminiは長プロンプトを正常処理するため、ここでは切り詰めない。
 
 ```javascript
-// buildNormalPrompt() 内
-function buildNormalPrompt(rawText, today, styleInstruction) {
-  return `あなたは日記執筆のアシスタントです。...
-
-【整形のルール】
-...
-6. ${styleInstruction}
-...`;
+// composeImagePrompt内、return直前に追加
+const MAX_PROMPT_WARN = 900; // DALL-E 3安全マージン
+if (result.prompt.length > MAX_PROMPT_WARN) {
+  console.warn(`画像プロンプト長警告: ${result.prompt.length}文字 (推奨上限: ${MAX_PROMPT_WARN})`);
 }
 ```
 
-`styleInstruction` は `getStyleClaudeInstruction(styleId)` から取得。
-
----
-
-### Phase 3: 画像生成API改修（generate-image.js）
-
-#### 3.1 styleIdの受信と検証
-
-1. リクエストボディから `styleId` を受け取る（**必須**: 未指定時は400エラー）
-2. `styleId` のホワイトリスト検証（`IMAGE_STYLES` のキー、不正値・未指定は400エラー）
-3. `verifyImageToken()` を使用してHMAC署名検証（styleId含む）
-4. `verifyImageToken()` が `{ valid: false }` を返した場合は `reason` に応じて400/401を返す
-
-#### 3.2 プロンプト合成の改修
-
-**変更対象:** `api/lib/character.js` の `composeImagePrompt()`
+**(b) `generateWithDalle` でのDALL-E 3専用切り詰め:** DALL-E 3に渡す直前で1000文字に切り詰める。Geminiには影響しない。
 
 ```javascript
-// 現在
-export function composeImagePrompt(diaryImagePrompt, character) { ... }
-
-// 修正後
-export function composeImagePrompt(diaryImagePrompt, character, styleId) {
-  const style = getStyle(styleId);
-
-  if (!character) {
-    // キャラクターなし: スタイルプレフィックス + 日記プロンプト
-    return {
-      prompt: `${style.promptPrefix}. ${diaryImagePrompt}`,
-      negativePrompt: style.negativePrompt,
-    };
-  }
-
-  // キャラクターあり: キャラクター設定 + スタイル + 日記プロンプト
-  const { basePrompt, styleModifiers, negativePrompt, craftAnalysis } = character.imageGeneration;
-  const { consistencyKeywords } = character.appearance;
-
-  const composed = [
-    basePrompt,
-    `Scene: ${diaryImagePrompt}`,
-    `Art style: ${style.promptPrefix}`,
-    `Style details: ${styleModifiers.join(', ')}`,
-    `Important details: ${consistencyKeywords.join(', ')}`,
-    craftAnalysis
-      ? `Color: ${craftAnalysis.color}. Rendering: ${craftAnalysis.rendering}. Atmosphere: ${craftAnalysis.atmosphere}`
-      : '',
-  ].filter(Boolean).join('. ');
-
-  // negativePromptはスタイルとキャラクターの両方をマージ
-  const mergedNegative = [negativePrompt, style.negativePrompt]
-    .filter(Boolean).join(', ');
-
-  return {
-    prompt: composed.slice(0, 3800),
-    negativePrompt: mergedNegative,
-  };
+// generateWithDalle内、fetch呼び出し前に追加
+const DALLE_MAX_PROMPT = 1000;
+if (prompt.length > DALLE_MAX_PROMPT) {
+  console.warn(`DALL-E 3プロンプト切り詰め: ${prompt.length} → ${DALLE_MAX_PROMPT}文字`);
+  prompt = prompt.slice(0, DALLE_MAX_PROMPT);
 }
 ```
 
-#### 3.3 Gemini NB2へのプロンプト送信（変更なし）
+**理由:**
+- DALL-E 3は1000文字超プロンプトでGPT-4自動書き換えが介入し、スタイル指示が失われるリスクがある
+- Geminiは長いプロンプトを正常処理するため、`composeImagePrompt`では切り詰めない
+- DALL-E 3固有の制限はDALL-E 3固有の関数内で対処するのが責務分離として適切
+- `composeImagePrompt`の警告ログは、将来的なプロンプト最適化の判断材料として残す
 
-現在の `generateWithGemini()` は `prompt` と `negativePrompt` を結合して送信:
-```javascript
-const fullPrompt = negativePrompt
-  ? `${prompt}\n\nAvoid: ${negativePrompt}`
-  : prompt;
-```
+### 3. `lib/image-backend.js` — DALL-E 3専用プロンプト切り詰め
 
-この仕組みはそのまま活用可能。スタイル情報はプロンプト内に含まれるため、Gemini APIへの変更は不要。
+#### 3.1 `generateWithDalle` にプロンプト長制限を追加
 
----
-
-### Phase 4: フロントエンド改修（diary-input.html）
-
-#### 4.1 スタイル選択UI追加
-
-日記作成フォームに画像スタイル選択セクションを追加:
-
-```html
-<div class="style-selector">
-  <label>画像スタイル:</label>
-  <div class="style-options">
-    <label class="style-option selected">
-      <input type="radio" name="imageStyle" value="illustration" checked>
-      <span class="style-preview">🎨</span>
-      <span class="style-name">イラスト調</span>
-    </label>
-    <label class="style-option">
-      <input type="radio" name="imageStyle" value="oilpainting">
-      <span class="style-preview">🖼️</span>
-      <span class="style-name">油絵調</span>
-    </label>
-  </div>
-</div>
-```
-
-#### 4.2 リクエストへのstyleId追加
-
-`buildImageRequestBody()` に `styleId` を追加:
-
-**変更対象:** `docs/js/build-image-request.js`
+`generateWithDalle` 関数の引数 `prompt` をfetch呼び出し前に1000文字で切り詰める。
+`prompt` 引数は `const` ではなく `let` に変更する（既存コードは引数を直接使用しているため、関数先頭でローカル変数に代入するかletに変更）。
 
 ```javascript
-export function buildImageRequestBody({ date, imageToken, filePath, characterId, mode, styleId }) {
-  const body = { date, imageToken };
-  if (filePath) body.filePath = filePath;
-  if (characterId) body.characterId = characterId;
-  if (mode && mode !== 'normal') body.mode = mode;
-  // styleIdは必須（HMAC署名と一致させるため）
-  body.styleId = styleId;
-  return body;
+// generateWithDalle関数内、fetchOpts定義の直前に追加
+const DALLE_MAX_PROMPT = 1000;
+if (prompt.length > DALLE_MAX_PROMPT) {
+  console.warn(`DALL-E 3プロンプト切り詰め: ${prompt.length} → ${DALLE_MAX_PROMPT}文字`);
+  prompt = prompt.slice(0, DALLE_MAX_PROMPT);
 }
 ```
 
-#### 4.3 create-diaryリクエストへのstyleId追加
+**注意:** 関数シグネチャの `prompt` 引数は再代入されるため、関数先頭でローカル変数にコピーするか、切り詰め結果を別変数に保持して以降で使用する。
 
-日記作成リクエスト時にも `styleId` を送信:
+### 4. `tests/image-styles.test.js` — テスト修正
+
+以下のアサーションを更新：
+
+| 行 | 現行 | 修正後 |
+|----|------|--------|
+| L23 | `expect(IMAGE_STYLES.oilpainting.name).toBe('油絵')` | `expect(IMAGE_STYLES.oilpainting.name).toBe('パレオアート')` |
+| L69 | `expect(style.name).toBe('油絵')` | `expect(style.name).toBe('パレオアート')` |
+| L70 | `expect(style.promptPrefix).toContain('Oil painting')` | `expect(style.promptPrefix).toContain('paleoart')` |
+
+**変更不要:**
+- L63: `toContain('Flat illustration')` — 維持
+- L116: `toContain('Flat illustration')` — 維持
+- L127: `toContain('photorealistic')` — 維持（negativePromptに含まれるため）
+- L138: `toContain('フラットイラスト調')` — 維持
+
+### 5. `tests/create-diary-dino.test.js` — claudeInstruction文字列の更新
+
+L353で `lastClaudePrompt` に `'油絵調'` が含まれることをチェックしているが、claudeInstructionを「パレオアート調」に変更するため回帰する。
+
+**修正方針:** 固定文字列ではなく、`getStyleClaudeInstruction('oilpainting')` の一部を動的に検証するか、`'パレオアート調'` に更新する。
+
+| 行 | 現行 | 修正後 |
+|----|------|--------|
+| L353 | `expect(lastClaudePrompt).toContain('油絵調')` | `expect(lastClaudePrompt).toContain('パレオアート調')` |
+
+### 6. `tests/character.test.js` — プロンプト長警告テスト追加
+
+`composeImagePrompt` の警告ログ動作を検証するテストを追加。
 
 ```javascript
-const requestBody = {
-  text: diaryText,
-  mode: selectedMode,
-  styleId: document.querySelector('input[name="imageStyle"]:checked')?.value || 'illustration',
-  // ... 既存フィールド
-};
+// 追加テストケース
+it('900文字超のプロンプトで警告ログが出力されること（キャラクターなし）', () => {
+  const warnSpy = vi.spyOn(console, 'warn');
+  const longPrompt = 'A'.repeat(800); // style.promptPrefix + ". " + longPrompt > 900
+  const result = composeImagePrompt(longPrompt, null, 'oilpainting');
+  expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('画像プロンプト長警告'));
+  warnSpy.mockRestore();
+});
+
+it('短いプロンプトで警告ログが出力されないこと', () => {
+  const warnSpy = vi.spyOn(console, 'warn');
+  const shortPrompt = 'A short prompt';
+  composeImagePrompt(shortPrompt, null, 'illustration');
+  expect(warnSpy).not.toHaveBeenCalled();
+  warnSpy.mockRestore();
+});
 ```
 
-#### 4.4 generate-image呼び出し時のstyleId伝搬
+### 7. `tests/image-backend.test.js` — DALL-E 3切り詰めテスト追加
 
-**重要:** `create-diary` レスポンスから `styleId` を受け取り、`generate-image` に必ず渡す:
+`generateWithDalle` が1000文字超プロンプトを切り詰めることを検証。
 
 ```javascript
-// create-diary レスポンス後
-if (result.imageToken && result.date) {
-  const imgRequestBody = buildImageRequestBody({
-    date: result.date,
-    imageToken: result.imageToken,
-    filePath: result.filePath,
-    characterId: result.characterId,
-    mode: result.mode,
-    styleId: result.styleId  // 必須: create-diaryレスポンスから受け取ったstyleIdをそのまま渡す
-  });
-  // ...
-}
+// 追加テストケース（既存のDALL-E 3テストグループ内）
+it('1000文字超のプロンプトが切り詰められること', async () => {
+  const longPrompt = 'A'.repeat(1500);
+  // fetchモックでリクエストbodyのprompt長を検証
+  // → body.prompt.length === 1000 であること
+});
 ```
 
-`create-diary` レスポンスには常に `styleId` を含める（デフォルト `'illustration'` 含む）。
+### 8. `docs/diary-input.html` — UI表示名の更新
+
+| 行 | 現行 | 修正後 |
+|----|------|--------|
+| L50 | `🖼️ 油絵調` | `🖼️ パレオアート調` |
+
+**注意:** styleIdの値 `oilpainting` は変更しない（後方互換性維持のため、既存日記のfrontmatterに `image_style: "oilpainting"` が記録されている）。
 
 ---
 
-### Phase 5: YAML Front Matter拡張
+## エラー防止の観点
 
-#### 5.1 styleIdの保存
+### 3.1 プロンプト長超過（DALL-E 3: 1000文字制限）
 
-生成された日記MarkdownのYAML Front Matterに `image_style` を追加:
+| リスク | 発生条件 | 対策 |
+|--------|---------|------|
+| promptPrefix + diaryImagePrompt が1000文字超 | oilpaintingの長いpromptPrefix（~520文字）+ 長いimage_prompt（最大500文字） | 2段構え: (1) `composeImagePrompt`で900文字超時に警告ログ出力 (2) `generateWithDalle`でDALL-E 3専用に1000文字で切り詰め。Geminiには影響なし |
+| キャラクター合成時にさらに長くなる | character.basePrompt + stylePrefix + keywords | 既存の`.slice(0, 3800)`ガードで対応済み |
 
-```yaml
----
-title: "タイトル"
-date: 2026-03-20
-tags: [...]
-image_prompt: "..."
-image_style: "illustration"
----
-```
+### 3.2 DALL-E 3のアーティスト名拒否
 
-**注意:** `image_style` は記録・閲覧目的のみ。generate-image APIはリクエストボディの `styleId` のみを認証・描画に使用する（Markdownフォールバックは行わない）。これにより、HMAC検証前にGitHub読み込みが必要になる矛盾を回避する。
+| リスク | 発生条件 | 対策 |
+|--------|---------|------|
+| プロンプトが拒否される | アーティスト名を含む場合 | promptPrefixにアーティスト名を**含めない**。スタイル特徴を記述的に表現（「acrylic paleoart painting style」等）。claudeInstructionにもアーティスト名は含めない |
 
-#### styleIdの単一ソース原則
+### 3.3 DALL-E 3の自動プロンプト書き換え
 
-| 用途 | ソース | 備考 |
-|------|--------|------|
-| HMAC署名生成 | create-diaryリクエストボディの `styleId` | 署名時に正規化済み |
-| HMAC署名検証 | generate-imageリクエストボディの `styleId` | フロントから伝搬 |
-| プロンプト合成 | generate-imageリクエストボディの `styleId` | HMAC検証後に使用 |
-| YAML保存 | create-diary処理時の `styleId` | 記録目的のみ |
+| リスク | 発生条件 | 対策 |
+|--------|---------|------|
+| 「現代風景を避ける」指示が書き換えで失われる | GPT-4の自動拡張時 | 肯定的フレーミング（「prehistoric wilderness」「ancient undisturbed landscape」）で記述。否定形（「no modern...」）は書き換えで無視されやすいため、肯定形と否定形の両方で指定 |
 
-**Markdownからの `image_style` 読み込みは一切行わない。** `styleId` の唯一の信頼ソースはリクエストボディであり、これによりHMAC検証順序（認証→GitHub読み込み→画像生成）の一貫性を保証する。
+### 3.4 スタイル切替時の整合性
 
----
+| リスク | 発生条件 | 対策 |
+|--------|---------|------|
+| imageToken署名とstyleId不一致 | フロントエンドでスタイル変更後に画像生成 | 既存のHMAC署名検証でstyleIdを含めて検証済み（`image-token.js`） — 追加対策不要 |
+| 既存日記のimage_style: "oilpainting"との互換性 | styleId値を変更した場合 | styleIdの値 `oilpainting` は**変更しない**。nameのみ「パレオアート」に変更 |
 
-### Phase 6: テスト追加
+### 3.5 テスト回帰
 
-#### 6.1 image-styles.jsのユニットテスト
+| リスク | 発生条件 | 対策 |
+|--------|---------|------|
+| promptPrefix文字列チェックの失敗 | `toContain('Oil painting')` | テスト修正（`toContain('paleoart')`に変更） |
+| name文字列チェックの失敗 | `toBe('油絵')` | テスト修正（`toBe('パレオアート')`に変更） |
+| claudeInstruction文字列の回帰 | `tests/create-diary-dino.test.js` L353 `toContain('油絵調')` | テスト修正（`toContain('パレオアート調')`に変更） |
+| character.test.jsの動的チェック | `toContain(style.promptPrefix)` | 影響なし（動的に取得するため） |
+| プロンプト長ガードのテスト未整備 | 新規追加のconsole.warn | `tests/character.test.js`に警告テスト追加 |
+| DALL-E切り詰めのテスト未整備 | 新規追加の1000文字切り詰め | `tests/image-backend.test.js`に切り詰めテスト追加 |
 
-**新規ファイル:** `tests/image-styles.test.js`
+### 3.6 Gemini「Avoid:」構文の適切な活用
 
-- `getStyle('illustration')` が正しいスタイル定義を返すこと
-- `getStyle('oilpainting')` が正しいスタイル定義を返すこと
-- `getStyle('unknown')` が `null` を返すこと（フォールバックなし）
-- `isValidStyleId()` がホワイトリスト内のキーでtrueを返すこと
-- `isValidStyleId()` が不明なキー・null・undefinedでfalseを返すこと
-- 各スタイルのpromptPrefix/negativePrompt/claudeInstructionが空でないこと
-
-#### 6.2 composeImagePromptの拡張テスト
-
-**変更対象:** `tests/character.test.js`
-
-- キャラクターなし + illustrationスタイルのプロンプト合成
-- キャラクターなし + oilpaintingスタイルのプロンプト合成
-- キャラクターあり + illustrationスタイルのプロンプト合成
-- キャラクターあり + oilpaintingスタイルのプロンプト合成
-- negativePromptのマージ検証
-
-#### 6.3 create-diary.jsのテスト拡張
-
-**変更対象:** `tests/create-diary-ratelimit.test.js` または新規
-
-- styleIdがClaudeプロンプトに反映されること
-- styleIdがimageTokenのHMAC署名に含まれること
-- 不正なstyleIdが拒否されること
-
-#### 6.4 generate-image.jsのテスト拡張
-
-**変更対象:** `tests/generate-image.test.js`
-
-- styleIdがHMAC検証に含まれること
-- styleIdがプロンプト合成に反映されること
-- 不正なstyleIdでの400エラー
-
-#### 6.5 build-image-request.jsのテスト拡張
-
-**変更対象:** `tests/build-image-request.test.js`
-
-- `styleId='illustration'` 時にbodyに `styleId` が含まれること
-- `styleId='oilpainting'` 時にbodyに `styleId` が含まれること
-- styleIdが常にbodyに設定されること（必須パラメータ）
-
-#### 6.6 image-token.jsのユニットテスト（契約テスト）
-
-**新規ファイル:** `tests/image-token.test.js`
-
-HMAC署名の一貫性を保証する契約テスト:
-
-**正常系:**
-- `buildTokenPayload()` が同一パラメータで同一文字列を返すこと
-- `generateImageToken()` で生成したトークンが `verifyImageToken()` で検証成功すること（illustration/oilpainting両方）
-
-**改ざん検出:**
-- `styleId='illustration'` で署名→`styleId='oilpainting'` で検証→失敗すること
-- `characterId` 改ざんで検証失敗すること
-- `mode` 改ざんで検証失敗すること
-
-**必須パラメータ検証:**
-- `buildTokenPayload()` に `styleId` 未指定で呼び出し→Errorがthrowされること
-- `buildTokenPayload()` に `date` 未指定で呼び出し→Errorがthrowされること
-
-**異常系（malformed token）:**
-- `verifyImageToken()` にコロンなしの文字列→ `{ valid: false, reason: 'token_format_invalid' }`
-- `verifyImageToken()` に非hex文字を含むhmac→ `{ valid: false, reason: 'hmac_format_invalid' }`
-- `verifyImageToken()` に64文字未満のhmac→ `{ valid: false, reason: 'hmac_format_invalid' }`
-- `verifyImageToken()` に非数値timestamp→ `{ valid: false, reason: 'timestamp_invalid' }`
-- `verifyImageToken()` に期限切れtoken→ `{ valid: false, reason: 'token_expired' }`
-- `verifyImageToken()` にnull/undefined→ `{ valid: false, reason: 'token_not_string' }`
-
-**この契約テストがcreate-diary ↔ generate-image間のHMAC整合性を構造的に保証する。**
+| リスク | 発生条件 | 対策 |
+|--------|---------|------|
+| negativePromptがGeminiで効かない | Gemini APIがAvoid:を無視 | `image-backend.js`の既存実装（`Avoid: ${negativePrompt}`追記）で対応済み。negativePromptに現代的要素を明記することで効果を最大化 |
 
 ---
 
-## 変更ファイル一覧
+## 実装順序
 
-| ファイル | 変更種別 | 概要 |
-|---------|---------|------|
-| `api/lib/image-styles.js` | **新規** | スタイル定義（illustration / oilpainting） |
-| `api/lib/image-token.js` | **新規** | HMAC署名生成・検証共通ユーティリティ |
-| `api/create-diary.js` | 修正 | styleId受信、Claudeプロンプト強化、HMAC生成をimage-token.jsに委譲 |
-| `api/generate-image.js` | 修正 | styleId受信・検証、HMAC検証をimage-token.jsに委譲 |
-| `api/lib/character.js` | 修正 | composeImagePrompt()にstyleId引数追加 |
-| `docs/diary-input.html` | 修正 | スタイル選択UI追加、create-diary/generate-image両方にstyleId追加 |
-| `docs/js/build-image-request.js` | 修正 | styleIdフィールド追加（常に明示的に含める） |
-| `tests/image-styles.test.js` | **新規** | スタイル定義テスト |
-| `tests/image-token.test.js` | **新規** | HMAC契約テスト（API間署名整合性保証） |
-| `tests/character.test.js` | 修正 | スタイル対応のプロンプト合成テスト追加 |
-| `tests/generate-image.test.js` | 修正 | styleId関連テスト追加 |
-| `tests/build-image-request.test.js` | 修正 | styleIdフィールドテスト追加 |
-| `tests/create-diary-dino.test.js` | 修正 | styleId対応のHMAC署名テスト追加 |
+1. `lib/image-styles.js` — スタイル定義の全面改訂
+2. `lib/character.js` — プロンプト長ガード追加
+3. `lib/image-backend.js` — DALL-E 3専用プロンプト切り詰め追加
+4. `tests/image-styles.test.js` — テストアサーション更新
+5. `tests/create-diary-dino.test.js` — claudeInstruction文字列更新
+6. `tests/character.test.js` — プロンプト長警告テスト追加
+7. `tests/image-backend.test.js` — DALL-E 3切り詰めテスト追加
+8. `docs/diary-input.html` — UI表示名更新
+9. `npm test` — 全テスト通過確認
 
 ---
 
-## セキュリティ考慮事項
+## テスト計画
 
-1. **HMAC署名にstyleIdを含める**: create-diaryで生成したstyleIdがgenerate-imageで改ざんされないことを保証
-2. **styleIdのバリデーション**: `IMAGE_STYLES` のキーのみ許可（ホワイトリスト方式）。未指定・不正値は400エラー
-3. **styleId必須契約**: create-diary/generate-image両APIで `styleId` は必須パラメータ。デフォルト補完は行わない（フロントエンドが常に送信する責務）
-4. **fail-closed**: 不正なstyleId、不正なトークン形式（malformed token）、HMAC不一致、期限切れは全て明示的にエラーレスポンスを返す。例外を500として漏らさない
-5. **verifyImageToken異常系**: トークン形式検証（コロン区切り、hex検証、長さ検証）→ TTL検証 → timingSafeEqual の順で検証。各ステップで失敗時は `{ valid: false, reason }` を返し、呼び出し元が適切なHTTPステータスを返す
-6. **既存tokenの互換性**: HMAC署名フォーマット変更により既存の未使用imageTokenは無効化される（5分TTLなので実質影響なし）
+### 自動テスト（修正対象）
+- `tests/image-styles.test.js`: oilpaintingのname・promptPrefix文字列アサーション更新
+- `tests/create-diary-dino.test.js`: L353 `'油絵調'` → `'パレオアート調'` に更新
+- `tests/character.test.js`: プロンプト長警告テスト追加（キャラクターあり/なし両パス）
+- `tests/image-backend.test.js`: DALL-E 3プロンプト切り詰めテスト追加
+- 全テストスイート通過確認（`npm test`）
 
-## 後方互換性
-
-- `styleId` パラメータは**必須**（create-diary, generate-image両方）。フロントエンドが常に `styleId` を送信するため、APIレベルでの後方互換は不要
-- 既存の日記MarkdownにはYAMLに `image_style` フィールドがないが、画像生成時にMarkdownは参照しないため問題なし
-- HMAC署名フォーマットの変更により、create-diary後5分以内のimageTokenのみ影響（実質問題なし）
-- フロントエンド（diary-input.html）はデフォルトで `illustration` がchecked状態のため、ユーザーが明示的に選択しなくても常に `styleId` が送信される
-
-## NB2（Gemini）固有の考慮事項
-
-- Gemini APIには `style` パラメータがないため、**スタイル制御はプロンプト内テキストで行う**
-- `promptPrefix` をプロンプトの先頭に配置することで、Geminiのスタイル解釈を誘導
-- `negativePrompt` は `\n\nAvoid: ...` として既存のロジックで付与される
-- Geminiの画像生成はDALL-E 3よりプロンプトへのスタイル指示の追従性が高い傾向がある
-
-## 実装順序（推奨）
-
-1. `api/lib/image-styles.js` 新規作成 + テスト
-2. `api/lib/image-token.js` 新規作成 + 契約テスト（HMAC署名の共通化）
-3. `api/lib/character.js` の `composeImagePrompt()` 改修 + テスト
-4. `api/create-diary.js` 改修（Claudeプロンプト強化 + styleId対応 + HMAC生成をimage-token.jsに委譲）+ テスト
-5. `api/generate-image.js` 改修（styleId検証 + HMAC検証をimage-token.jsに委譲）+ テスト
-6. `docs/js/build-image-request.js` 改修 + テスト
-7. `docs/diary-input.html` UI追加（create-diary送信 + generate-image伝搬の両方）
-8. 全テスト実行 + codex-review
+### 手動テスト（実装後に推奨）
+- Vercelプレビューデプロイで以下を確認:
+  1. illustrationスタイルで日記作成→画像生成 → 現代風景が出ないこと
+  2. oilpaintingスタイルで日記作成→画像生成 → パレオアート調の画像が出ること
+  3. 恐竜ストーリーモード + キャラクター + 各スタイルで画像生成可能なこと
 
 ---
 
-*作成日: 2026-03-20*
-*デフォルトバックエンド: NB2（Gemini 3.1 Flash Image Preview）*
+## 影響範囲サマリー
+
+- **変更ファイル数:** 8ファイル（lib 3, tests 4, docs 1）
+- **API互換性:** 完全互換（styleId値 `oilpainting` / `illustration` は変更なし）
+- **フロントエンド互換性:** 表示名のみ変更（「油絵調」→「パレオアート調」）
+- **既存日記互換性:** 影響なし（frontmatterの `image_style: "oilpainting"` はそのまま有効）
+- **新規環境変数:** なし
+- **新規依存パッケージ:** なし
