@@ -20,7 +20,7 @@ describe('IMAGE_STYLES定義', () => {
 
   it('oilpaintingスタイルが定義されていること', () => {
     expect(IMAGE_STYLES.oilpainting).toBeDefined();
-    expect(IMAGE_STYLES.oilpainting.name).toBe('油絵');
+    expect(IMAGE_STYLES.oilpainting.name).toBe('パレオアート');
   });
 
   it('各スタイルのpromptPrefixが空でないこと', () => {
@@ -66,8 +66,8 @@ describe('getStyle', () => {
   it('oilpaintingのスタイル定義を返すこと', () => {
     const style = getStyle('oilpainting');
     expect(style).not.toBeNull();
-    expect(style.name).toBe('油絵');
-    expect(style.promptPrefix).toContain('Oil painting');
+    expect(style.name).toBe('パレオアート');
+    expect(style.promptPrefix).toContain('paleoart');
   });
 
   it('未知のstyleIdでnullを返すこと（フォールバックなし）', () => {

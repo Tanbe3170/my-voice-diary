@@ -179,6 +179,38 @@ describe('generateImageWithFallback', () => {
     expect(result.model).toBe('NBpro');
   });
 
+  it('1000文字超のプロンプトがDALL-E 3で切り詰められること', async () => {
+    delete process.env.GOOGLE_API_KEY;
+    const longPrompt = 'A'.repeat(1500);
+
+    global.fetch = vi.fn().mockResolvedValueOnce(dalleSuccessResponse());
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await generateImageWithFallback(longPrompt, '');
+
+    // fetchに渡されたbodyのpromptが1000文字に切り詰められていること
+    const fetchCall = global.fetch.mock.calls[0];
+    const body = JSON.parse(fetchCall[1].body);
+    expect(body.prompt.length).toBe(1000);
+
+    // 警告ログが出力されていること
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('DALL-E 3プロンプト切り詰め'));
+    warnSpy.mockRestore();
+  });
+
+  it('1000文字以内のプロンプトはDALL-E 3で切り詰められないこと', async () => {
+    delete process.env.GOOGLE_API_KEY;
+    const shortPrompt = 'A'.repeat(500);
+
+    global.fetch = vi.fn().mockResolvedValueOnce(dalleSuccessResponse());
+
+    await generateImageWithFallback(shortPrompt, '');
+
+    const fetchCall = global.fetch.mock.calls[0];
+    const body = JSON.parse(fetchCall[1].body);
+    expect(body.prompt.length).toBe(500);
+  });
+
   it('negativePromptがGeminiプロンプトに追記される', async () => {
     mockGenerateContent.mockResolvedValueOnce(geminiSuccessResponse());
 

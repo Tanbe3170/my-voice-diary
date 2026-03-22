@@ -350,7 +350,7 @@ describe('create-diary API characterId機能', () => {
     await handler(req, res);
     expect(res._status).toBe(200);
     // 油絵スタイルの指示がClaudeプロンプトに含まれること
-    expect(lastClaudePrompt).toContain('油絵調');
+    expect(lastClaudePrompt).toContain('パレオアート調');
   });
 
   // =================================================================

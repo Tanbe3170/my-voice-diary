@@ -279,6 +279,31 @@ describe('composeImagePrompt', () => {
     expect(result.negativePrompt).toContain(style.negativePrompt);
   });
 
+  it('900文字超のプロンプトで警告ログが出力されること（キャラクターなし）', () => {
+    const warnSpy = vi.spyOn(console, 'warn');
+    const longPrompt = 'A'.repeat(800);
+    const result = composeImagePrompt(longPrompt, null, 'oilpainting');
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('画像プロンプト長警告'));
+    warnSpy.mockRestore();
+  });
+
+  it('900文字超のプロンプトで警告ログが出力されること（キャラクターあり）', () => {
+    const warnSpy = vi.spyOn(console, 'warn');
+    const character = createValidCharacter();
+    const longPrompt = 'A'.repeat(800);
+    const result = composeImagePrompt(longPrompt, character, 'oilpainting');
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('画像プロンプト長警告'));
+    warnSpy.mockRestore();
+  });
+
+  it('短いプロンプトで警告ログが出力されないこと', () => {
+    const warnSpy = vi.spyOn(console, 'warn');
+    const shortPrompt = 'A short prompt';
+    composeImagePrompt(shortPrompt, null, 'illustration');
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
   it('negativePromptマージ検証', () => {
     const character = createValidCharacter();
     const style = getStyle('oilpainting');
