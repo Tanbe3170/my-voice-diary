@@ -1,32 +1,30 @@
 ---
-title: "空からの安全基地計画"
+title: "空からの大発見"
 date: 2026-03-22
-tags: ["#恐竜日記", "#DinoWorld", "#ケッツの日常", "#翼竜ライフ", "#安全基地"]
-image_prompt: "A friendly Quetzalcoatlus pterosaur with soft, cartoonish features perched on a modern city skyscraper rooftop at sunset, spreading its large wings while overlooking the urban landscape below. The scene shows a peaceful moment with warm golden light, the pterosaur having a content expression, surrounded by other small resting spots visible across the cityscape. Oil painting style with thick brushstrokes, rich warm colors, and canvas texture. The composition captures both the vastness of the sky "
+tags: ["#恐竜日記", "#DinoWorld", "#翼竜ライフ", "#空からの視点", "#俯瞰思考"]
+image_prompt: "A majestic Quetzalcoatlus with cartoonish friendly features soaring gracefully through golden hour clouds at high altitude, wings outstretched against dramatic sunset sky painted in warm amber and orange hues, vast prehistoric landscape visible far below through cloud gaps, mountain ranges and ancient forests creating natural patterns, atmospheric perspective showing depth and distance, painted in soft acrylic paleoart style with golden lighting and earth tones, the pterosaur's expression showin"
 image_style: "oilpainting"
 mode: "dino-story"
 ---
 
-# 空からの安全基地計画
+# 空からの大発見
 
 ## 📅 2026-03-22
 
 ### 📖 サマリー
 
-今日は安全基地について考えた日だった
-翼を休められる場所の大切さを実感
-人間も恐竜も拠点があるから頑張れる
+研究に行き詰まったときは高く舞い上がるに限る
+雲の上からヒラメキが降りてきた
+距離感って本当に大切なんだ
 
 ---
 
-今日は朝から「安全基地」について真剣に考えてみたんだ。ボクたち翼竜は空を飛び回るのが得意だけれど、やっぱり時々翼を休められる場所が必要なんだよね。
+今日は朝から人間の友達の研究室で難しい数式と格闘していたんだ。でも煮詰まってしまって、頭がぐるぐる回るばかり。そんなとき、ボクは思い切って大空へ舞い上がった。
 
-人間の友達と話していて気づいたのは、彼らも同じことを考えているということ。実家じゃなくてもいい、昔よく遊んだ公園や、お気に入りのカフェ、読み慣れた本や懐かしいゲーム。そういう「帰れる場所」をたくさん作っておくことが大切なんだって。
+地上3000メートルの高さまで上昇すると、さっきまで複雑に見えていた問題が嘘のようにシンプルに見えてきた。雲間を滑空しながら俯瞰していると、解決策がまるで風に乗ってやってくるように頭に浮かんだんだよ。
 
-ボクの場合は、街の高いビルの屋上や、港の見晴らしの良い灯台、それから図書館の静かな一角も安全基地の一つかな。トリケラトプスのトリちゃんは「お気に入りの草原がいくつもある」って言ってたし、ティラノサウルスのレックスは「美味しい肉屋さんがあれば十分」だって笑ってた。
-
-戦い続けることはできないよね。日々の生活は時として厳しいけれど、安心できる拠点があるからこそ、また明日へ向かって飛んでいけるんだ。今度の休日は、新しい安全基地を探しに街を一周してみよう。空からの眺めなら、きっと素敵な場所が見つかるはずだよ。
+真の解決策は、まず離れること。これは翼竜の本能かもしれないね。困ったときは高く飛ぶ。距離を置く。そうすれば見えなかった道筋が必ず見つかる。地上の友達にもこの感覚を教えてあげたいなあ。
 
 ---
 
-**Tags:** #恐竜日記 #DinoWorld #ケッツの日常 #翼竜ライフ #安全基地
+**Tags:** #恐竜日記 #DinoWorld #翼竜ライフ #空からの視点 #俯瞰思考
