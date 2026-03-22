@@ -283,7 +283,7 @@ describe('composeImagePrompt', () => {
     const warnSpy = vi.spyOn(console, 'warn');
     const longPrompt = 'A'.repeat(800);
     const result = composeImagePrompt(longPrompt, null, 'oilpainting');
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('画像プロンプト長警告'));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[PROMPT_LENGTH_WARN]'));
     warnSpy.mockRestore();
   });
 
@@ -292,7 +292,7 @@ describe('composeImagePrompt', () => {
     const character = createValidCharacter();
     const longPrompt = 'A'.repeat(800);
     const result = composeImagePrompt(longPrompt, character, 'oilpainting');
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('画像プロンプト長警告'));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[PROMPT_LENGTH_WARN]'));
     warnSpy.mockRestore();
   });
 

@@ -194,7 +194,7 @@ describe('generateImageWithFallback', () => {
     expect(body.prompt.length).toBe(1000);
 
     // 警告ログが出力されていること
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('DALL-E 3プロンプト切り詰め'));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[DALLE_TRUNCATE]'));
     warnSpy.mockRestore();
   });
 
