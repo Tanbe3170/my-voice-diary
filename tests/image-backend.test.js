@@ -231,24 +231,27 @@ describe('generateImageWithFallback (deadline)', () => {
   });
 
   it('残時間減衰: 1回目で時間消費後、2回目試行前にdeadline超過で即時失敗', async () => {
-    // NB2で時間消費するモック（100ms遅延後失敗）
+    // fake timersで決定論化
+    vi.useFakeTimers();
+    const now = Date.now();
+
+    // NB2で失敗し、内部で時間が経過したことをシミュレート
     mockGenerateContent.mockImplementationOnce(async () => {
-      await new Promise(r => setTimeout(r, 100));
+      // 100ms経過をシミュレート
+      vi.advanceTimersByTime(100);
       throw new Error('NB2 error');
     });
 
-    // deadlineを設定: MARGIN(2000ms) + 150ms = 2150ms
-    // NB2の100ms消費後、残り = 2150 - 100 - 2000 = 50ms → 正だがNBproの前に残り再計算で十分少ない
-    // → NBproの前: remaining = deadline - now - MARGIN → 2150 - ~100消費 - 2000 ≈ 50ms
-    // NBproは50ms以内で呼ばれるはずなので、さらにタイトにする
-    // deadline = now + 2100 → NB2 100ms消費 → remaining = 2100 - 100 - 2000 = 0 → ≤ 0 → DEADLINE_EXCEEDED
-    const tightDeadline = Date.now() + 2_100;
+    // deadline = now + 2100 → NB2で100ms消費 → remaining = 2100 - 100 - MARGIN(2000) = 0 → DEADLINE_EXCEEDED
+    const tightDeadline = now + 2_100;
 
     await expect(generateImageWithFallback('test prompt', 'neg', tightDeadline)).rejects.toMatchObject({
       code: 'DEADLINE_EXCEEDED',
     });
     // NB2は呼ばれたがNBproは呼ばれていない
     expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+
+    vi.useRealTimers();
   });
 });
 

@@ -212,6 +212,9 @@ export default async function handler(req, res) {
       }
     } catch (redisError) {
       console.error('Upstash接続エラー:', redisError);
+      if (isTimeoutError(redisError)) {
+        return res.status(504).json({ error: '処理がタイムアウトしました。再度お試しください。' });
+      }
       return res.status(500).json({
         error: 'サーバーの一時的なエラーです。しばらくしてから再度お試しください。'
       });
