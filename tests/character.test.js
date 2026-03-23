@@ -563,4 +563,130 @@ describe('composeImagePrompt - craftAnalysis互換', () => {
 
     expect(result.prompt).not.toContain('Color:');
   });
+
+  it('craftAnalysis部分定義: colorのみでRendering: undefinedが出ないこと', () => {
+    const character = createCharacterWithStyleOverrides();
+    character.imageGeneration.styleOverrides.illustration.craftAnalysis = {
+      color: 'warm earth tones',
+      // rendering, atmosphere が未定義
+    };
+    const result = composeImagePrompt('test scene', character, 'illustration');
+
+    expect(result.prompt).not.toContain('undefined');
+    expect(result.prompt).not.toContain('Rendering:');
+  });
+});
+
+// ===================================================================
+// styleOverrides 不正データ防御テスト
+// ===================================================================
+
+describe('composeImagePrompt - styleOverrides不正データ防御', () => {
+  it('不正styleOverrides: consistencyKeywordsが非配列でもエラーにならない', () => {
+    const character = createCharacterWithStyleOverrides();
+    character.imageGeneration.styleOverrides.illustration.consistencyKeywords = 'not-an-array';
+    // resolveStyleAttributesがデフォルトにフォールバックする
+    const result = composeImagePrompt('A sunny day', character, 'illustration');
+    expect(result).toBeDefined();
+    expect(result.prompt).toBeDefined();
+    // デフォルトのconsistencyKeywordsが使われる
+    expect(result.prompt).toContain('chibi quetzalcoatlus');
+  });
+
+  it('不正styleOverrides: styleModifiersが非配列でもエラーにならない', () => {
+    const character = createCharacterWithStyleOverrides();
+    character.imageGeneration.styleOverrides.illustration.styleModifiers = 123;
+    const result = composeImagePrompt('A sunny day', character, 'illustration');
+    expect(result).toBeDefined();
+    expect(result.prompt).toBeDefined();
+  });
+
+  it('不正styleOverrides: basePromptが非文字列でもエラーにならない', () => {
+    const character = createCharacterWithStyleOverrides();
+    character.imageGeneration.styleOverrides.illustration.basePrompt = 999;
+    const result = composeImagePrompt('A sunny day', character, 'illustration');
+    expect(result).toBeDefined();
+    // デフォルトのbasePromptにフォールバック
+    expect(result.prompt).toContain('A cute chibi Quetzalcoatlus pterosaur character');
+  });
+
+  it('不正styleOverrides: negativePromptが非文字列でもエラーにならない', () => {
+    const character = createCharacterWithStyleOverrides();
+    character.imageGeneration.styleOverrides.illustration.negativePrompt = ['array'];
+    const result = composeImagePrompt('A sunny day', character, 'illustration');
+    expect(result).toBeDefined();
+    expect(result.negativePrompt).toBeDefined();
+  });
+
+  it('validateCharacterSchema: consistencyKeywordsが数値の場合にスキーマ検証失敗', async () => {
+    const invalidCharacter = createCharacterWithStyleOverrides();
+    invalidCharacter.imageGeneration.styleOverrides.illustration.consistencyKeywords = 12345;
+    global.fetch = vi.fn().mockResolvedValueOnce(githubApiResponse(invalidCharacter));
+
+    const result = await loadCharacter('quetz-default', githubConfig);
+    expect(result).toBeNull();
+  });
+
+  it('validateCharacterSchema: styleModifiersがオブジェクトの場合にスキーマ検証失敗', async () => {
+    const invalidCharacter = createCharacterWithStyleOverrides();
+    invalidCharacter.imageGeneration.styleOverrides.illustration.styleModifiers = { bad: true };
+    global.fetch = vi.fn().mockResolvedValueOnce(githubApiResponse(invalidCharacter));
+
+    const result = await loadCharacter('quetz-default', githubConfig);
+    expect(result).toBeNull();
+  });
+
+  it('validateCharacterSchema: basePromptが数値の場合にスキーマ検証失敗', async () => {
+    const invalidCharacter = createCharacterWithStyleOverrides();
+    invalidCharacter.imageGeneration.styleOverrides.illustration.basePrompt = 999;
+    global.fetch = vi.fn().mockResolvedValueOnce(githubApiResponse(invalidCharacter));
+
+    const result = await loadCharacter('quetz-default', githubConfig);
+    expect(result).toBeNull();
+  });
+
+  it('validateCharacterSchema: craftAnalysisが文字列の場合にスキーマ検証失敗', async () => {
+    const invalidCharacter = createCharacterWithStyleOverrides();
+    invalidCharacter.imageGeneration.styleOverrides.illustration.craftAnalysis = 'bad';
+    global.fetch = vi.fn().mockResolvedValueOnce(githubApiResponse(invalidCharacter));
+
+    const result = await loadCharacter('quetz-default', githubConfig);
+    expect(result).toBeNull();
+  });
+
+  it('validateCharacterSchema: negativePromptが配列の場合にスキーマ検証失敗', async () => {
+    const invalidCharacter = createCharacterWithStyleOverrides();
+    invalidCharacter.imageGeneration.styleOverrides.illustration.negativePrompt = ['bad'];
+    global.fetch = vi.fn().mockResolvedValueOnce(githubApiResponse(invalidCharacter));
+
+    const result = await loadCharacter('quetz-default', githubConfig);
+    expect(result).toBeNull();
+  });
+
+  it('validateCharacterSchema: styleOverridesが配列の場合にスキーマ検証失敗', async () => {
+    const invalidCharacter = createCharacterWithStyleOverrides();
+    invalidCharacter.imageGeneration.styleOverrides = ['bad'];
+    global.fetch = vi.fn().mockResolvedValueOnce(githubApiResponse(invalidCharacter));
+
+    const result = await loadCharacter('quetz-default', githubConfig);
+    expect(result).toBeNull();
+  });
+
+  it('validateCharacterSchema: styleOverrides.illustrationが配列の場合にスキーマ検証失敗', async () => {
+    const invalidCharacter = createCharacterWithStyleOverrides();
+    invalidCharacter.imageGeneration.styleOverrides.illustration = ['bad'];
+    global.fetch = vi.fn().mockResolvedValueOnce(githubApiResponse(invalidCharacter));
+
+    const result = await loadCharacter('quetz-default', githubConfig);
+    expect(result).toBeNull();
+  });
+
+  it('validateCharacterSchema: craftAnalysisが配列の場合にスキーマ検証失敗', async () => {
+    const invalidCharacter = createCharacterWithStyleOverrides();
+    invalidCharacter.imageGeneration.styleOverrides.illustration.craftAnalysis = ['bad'];
+    global.fetch = vi.fn().mockResolvedValueOnce(githubApiResponse(invalidCharacter));
+
+    const result = await loadCharacter('quetz-default', githubConfig);
+    expect(result).toBeNull();
+  });
 });
