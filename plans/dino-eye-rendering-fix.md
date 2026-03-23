@@ -89,11 +89,17 @@
           "warm brown and cream tones",
           "small round amber eye with catchlight",
           "2-3 head proportion"
-        ]
+        ],
+        "craftAnalysis": {
+          "color": "warm earth tones with cream accents, soft contrast, limited palette",
+          "rendering": "flat illustration with bold outlines, geometric simplification",
+          "atmosphere": "friendly, approachable, educational clarity"
+        }
       },
       "oilpainting": {
         "basePrompt": "A scientifically accurate Quetzalcoatlus northropi azhdarchid pterosaur, anatomically correct proportions with massive wingspan, long toothless beak, small sagittal crest, body covered in fine pycnofibers, warm brown dorsal and pale cream ventral countershading, naturally posed in prehistoric environment",
         "eyeDescriptor": "realistic detailed pterosaur eye with round bird-like pupil, dark amber-brown iris reflecting ambient environmental light, subtle catchlight conveying awareness and intelligence, anatomically accurate eye placement and scale based on extant archosaur relatives, no exaggeration",
+        "negativePrompt": "photorealistic, dark, horror, violent, scary, dragon, bat wings, teeth, feathers instead of pycnofibers, kawaii, chibi, anime eyes, cartoon, cute",
         "consistencyKeywords": [
           "anatomically accurate quetzalcoatlus",
           "correct body proportions",
@@ -102,22 +108,20 @@
           "warm brown and cream countershading",
           "realistic bird-like eye with round pupil",
           "natural behavioral pose"
-        ]
+        ],
+        "craftAnalysis": {
+          "color": "muted naturalistic earth tones, golden amber highlights, cool blue-grey shadows",
+          "rendering": "acrylic paleoart painting, soft layered brushwork, atmospheric depth",
+          "atmosphere": "serene documentary, environmental storytelling, prehistoric wilderness"
+        }
       }
     },
-    "negativePrompt": "...(既存)",
-    "styleModifiers": ["...(既存)"],
+    "negativePrompt": "...(既存 - デフォルトフォールバック用)",
+    "styleModifiers": ["...(既存 - デフォルトフォールバック用)"],
     "craftAnalysis": {
-      "illustration": {
-        "color": "warm earth tones with cream accents, soft contrast, limited palette",
-        "rendering": "flat illustration with bold outlines, geometric simplification",
-        "atmosphere": "friendly, approachable, educational clarity"
-      },
-      "oilpainting": {
-        "color": "muted naturalistic earth tones, golden amber highlights, cool blue-grey shadows",
-        "rendering": "acrylic paleoart painting, soft layered brushwork, atmospheric depth",
-        "atmosphere": "serene documentary, environmental storytelling, prehistoric wilderness"
-      }
+      "color": "warm earth tones with cream accents, soft contrast",
+      "rendering": "clean digital illustration, character design quality",
+      "atmosphere": "friendly, approachable, kawaii aesthetic"
     }
   }
 }
@@ -129,7 +133,7 @@
 - プロンプト切り捨て時に目の指示が失われる
 - AIが他の指示と目の指示を競合させる
 
-`eyeDescriptor`を独立フィールドにし、`composeImagePrompt()`で**プロンプト末尾付近**に配置することで、AIの注意を確保する。
+`eyeDescriptor`を独立フィールドにし、`composeImagePrompt()`で**basePrompt直後**に配置することで、3800文字スライス時に切り捨てられることを防ぎ、AIの注意を確保する。
 
 ### Phase B: composeImagePrompt()のスタイル分岐対応（lib/character.js）
 
@@ -139,19 +143,45 @@
 /**
  * スタイル別のキャラクター属性を解決する
  * styleOverrides[styleId]が存在すればそれを使用、なければデフォルトにフォールバック
+ *
+ * 返却契約（全フィールド保証）:
+ * - basePrompt: string
+ * - eyeDescriptor: string（空文字許容）
+ * - consistencyKeywords: string[]
+ * - craftAnalysis: { color, rendering, atmosphere }（フラット形式に正規化）
+ * - styleModifiers: string[]
+ * - negativePrompt: string
  */
 function resolveStyleAttributes(character, styleId) {
   const imgGen = character.imageGeneration;
   const overrides = imgGen.styleOverrides?.[styleId];
+
+  // craftAnalysis正規化: v2(nested)とv1(flat)の両対応
+  // v2: imgGen.craftAnalysis = { illustration: {...}, oilpainting: {...} }
+  // v1: imgGen.craftAnalysis = { color: "...", rendering: "...", ... }
+  let craftAnalysis;
+  if (overrides?.craftAnalysis) {
+    // styleOverrides内に直接指定されている場合（最優先）
+    craftAnalysis = overrides.craftAnalysis;
+  } else if (imgGen.craftAnalysis?.[styleId] && typeof imgGen.craftAnalysis[styleId] === 'object'
+    && 'color' in imgGen.craftAnalysis[styleId]) {
+    // v2(nested): craftAnalysis.illustration.color が存在する
+    craftAnalysis = imgGen.craftAnalysis[styleId];
+  } else if (imgGen.craftAnalysis && 'color' in imgGen.craftAnalysis) {
+    // v1(flat): craftAnalysis.color が直接存在する
+    craftAnalysis = imgGen.craftAnalysis;
+  } else {
+    craftAnalysis = {};
+  }
 
   return {
     basePrompt: overrides?.basePrompt || imgGen.basePrompt,
     eyeDescriptor: overrides?.eyeDescriptor || '',
     consistencyKeywords: overrides?.consistencyKeywords
       || character.appearance.consistencyKeywords,
-    craftAnalysis: imgGen.craftAnalysis?.[styleId]
-      || imgGen.craftAnalysis || {},
+    craftAnalysis,
     styleModifiers: overrides?.styleModifiers || imgGen.styleModifiers || [],
+    negativePrompt: overrides?.negativePrompt || imgGen.negativePrompt || '',
   };
 }
 ```
@@ -172,29 +202,38 @@ export function composeImagePrompt(diaryImagePrompt, character, styleId) {
 
   const composed = [
     resolved.basePrompt,
+    // eyeDescriptorをbasePrompt直後に配置（3800文字スライス時の保護）
+    resolved.eyeDescriptor
+      ? `Eye detail (IMPORTANT): ${resolved.eyeDescriptor}` : null,
     `Scene: ${diaryImagePrompt}`,
     style ? `Art style: ${style.promptPrefix}` : null,
     `Style details: ${resolved.styleModifiers.join(', ')}`,
     `Important details: ${resolved.consistencyKeywords.join(', ')}`,
-    // 目の描写をプロンプト末尾付近に独立配置（AI注意度向上）
-    resolved.eyeDescriptor
-      ? `Eye detail (IMPORTANT): ${resolved.eyeDescriptor}` : null,
     resolved.craftAnalysis.color
       ? `Color: ${resolved.craftAnalysis.color}. Rendering: ${resolved.craftAnalysis.rendering}. Atmosphere: ${resolved.craftAnalysis.atmosphere}`
       : '',
   ].filter(Boolean).join('. ');
 
-  // ... 以降は既存と同じ
+  // negativePromptはresolved経由で取得（B-3参照）
+  const mergedNegative = [resolved.negativePrompt, style ? style.negativePrompt : '']
+    .filter(Boolean).join(', ');
+
+  // スタイル不整合検出（C-1）
+  detectStyleConflict(composed, styleId);
+
+  // ... 以降は既存と同じ（result構築、PROMPT_WARN_THRESHOLD警告）
 }
 ```
 
 #### B-3: negativePromptのスタイル別マージ
 
 パレオアートモード時に「kawaii, chibi, anime eyes, cartoon」をnegativePromptに追加し、スタイル汚染を防止。
+`resolveStyleAttributes()`が返す`negativePrompt`を使用する（B-1で返却契約に含めた）。
 
 ```javascript
-// character側のnegativePromptもスタイル別にする
-const characterNegative = overrides?.negativePrompt || imgGen.negativePrompt;
+// resolveStyleAttributes()の返却値を利用（overrides直接参照はしない）
+const mergedNegative = [resolved.negativePrompt, style ? style.negativePrompt : '']
+  .filter(Boolean).join(', ');
 ```
 
 ### Phase C: エラー防止・品質保証
@@ -220,45 +259,76 @@ function detectStyleConflict(prompt, styleId) {
 }
 ```
 
-#### C-2: プロンプト長管理の強化
+#### C-2: プロンプト長管理の責務分離
 
-現状の3800文字スライスは雑な切り捨て。目の描写が切り捨てられないよう、優先度ベースの構成に変更：
+**設計原則**: プロンプト長制御はモデル依存のため、`composeImagePrompt()`と`image-backend.js`で責務を分離する。
+
+- **composeImagePrompt()**: 高品質な共通プロンプトを生成する。現行の`3800`文字スライスは維持するが、**目の描写（eyeDescriptor）がスライスで失われないよう、プロンプト内の配置順序で保護する**（末尾付近のeyeDescriptorはbasePromptの直後に再配置せず、全体が3800文字以内なら切り捨てられない）。
+- **image-backend.js（DALL-E向け）**: 現行の`DALLE_MAX_PROMPT`（1000文字）トリムは`generateWithDalle`直前で適用されており、**そのまま維持する**。Gemini系は制限が緩いため別途制約不要。
 
 ```javascript
-// 優先度: 高→低
-const PRIORITY_SECTIONS = [
-  { label: 'base', content: resolved.basePrompt, priority: 1 },
-  { label: 'eye', content: eyeSection, priority: 2 },      // 目は高優先度
-  { label: 'scene', content: sceneSection, priority: 3 },
-  { label: 'style', content: styleSection, priority: 4 },
-  { label: 'details', content: detailsSection, priority: 5 },
-  { label: 'craft', content: craftSection, priority: 6 },
-];
-// DALL-E制限（1000文字）に収まるよう低優先度から削除
+// composeImagePrompt側: 現行の3800文字スライスを維持
+// ただし、eyeDescriptorをbasePrompt直後に配置し、スライス時に保護する
+const composed = [
+  resolved.basePrompt,
+  resolved.eyeDescriptor
+    ? `Eye detail (IMPORTANT): ${resolved.eyeDescriptor}` : null,
+  `Scene: ${diaryImagePrompt}`,
+  style ? `Art style: ${style.promptPrefix}` : null,
+  `Style details: ${resolved.styleModifiers.join(', ')}`,
+  `Important details: ${resolved.consistencyKeywords.join(', ')}`,
+  resolved.craftAnalysis.color
+    ? `Color: ${resolved.craftAnalysis.color}. Rendering: ${resolved.craftAnalysis.rendering}. Atmosphere: ${resolved.craftAnalysis.atmosphere}`
+    : '',
+].filter(Boolean).join('. ');
+
+// image-backend.js側: DALL-E向け1000文字トリムは既存実装のまま
+// （変更不要 — lib/image-backend.js:110-112）
 ```
 
-#### C-3: テスト追加
+**注意**: Phase C-2は新コードの追加なし。既存のモデル別トリム責務を尊重し、composeImagePromptでは配置順序のみで目の描写を保護する。
+
+#### C-3: テスト追加（既存tests/character.test.jsへの追記）
+
+**方針**: 既存テスト全件を維持する。新しいdescribeブロックを追記する。
 
 ```javascript
-// tests/character.test.js（新規）
+// tests/character.test.js（既存ファイルに追記）
+
+// --- 追加テスト: スタイル別分岐 ---
 describe('composeImagePrompt - スタイル別分岐', () => {
   it('illustration: chibi basePromptと小さい丸い目を使用', () => { ... });
   it('oilpainting: 写実的basePromptと鳥類型目を使用', () => { ... });
   it('oilpainting: negativePromptにkawaii/chibiが含まれる', () => { ... });
   it('不明なstyleId: デフォルトbasePromptにフォールバック', () => { ... });
   it('styleOverrides未定義: デフォルトにフォールバック', () => { ... });
-  it('目の描写がプロンプト切り捨てで失われない', () => { ... });
+  it('eyeDescriptorがプロンプトに含まれること', () => { ... });
   it('スタイル不整合検出が警告を出す', () => { ... });
 });
+
+// resolveStyleAttributesは非公開関数のため、composeImagePrompt経由の振る舞いテストで検証
+describe('composeImagePrompt - craftAnalysis互換（resolveStyleAttributes振る舞い検証）', () => {
+  it('v1(flat craftAnalysis): Colorセクションが合成結果に含まれる', () => { ... });
+  it('v2(nested craftAnalysis): styleId対応のColorセクションが使用される', () => { ... });
+  it('styleOverrides内craftAnalysisが最優先で使用される', () => { ... });
+  it('craftAnalysis未定義: Colorセクションが省略される', () => { ... });
+});
+
+// 既存テスト全件維持の確認はnpm test実行で担保
 ```
 
 #### C-4: スキーマ検証の拡張（lib/character.js）
 
 ```javascript
 // validateCharacterSchema()にstyleOverridesの型チェックを追加
-// - styleOverrides存在時、各キーがIMAGE_STYLESに存在するか確認
+// - styleOverrides存在時、各キーがIMAGE_STYLESに存在するか確認（未知キーは警告のみ、fail-open）
 // - eyeDescriptorが文字列であること
-// - 未知のスタイルキーは警告のみ（fail-openでブロックしない）
+// - 文字列フィールドの最大長制約:
+//   - basePrompt: 最大800文字
+//   - eyeDescriptor: 最大300文字
+//   - negativePrompt: 最大500文字
+//   - consistencyKeywords: 最大20要素、各要素最大100文字
+// - 過長入力はconsole.warnで警告し、切り詰めて使用する（ブロックしない）
 ```
 
 ---
@@ -270,7 +340,7 @@ describe('composeImagePrompt - スタイル別分岐', () => {
 | `characters/quetz-default.json` | styleOverrides追加、eyeDescriptor追加 | 低: 後方互換あり |
 | `lib/character.js` | resolveStyleAttributes追加、composeImagePrompt改修 | 中: 既存プロンプト構造変更 |
 | `lib/image-styles.js` | 変更なし | - |
-| `tests/character.test.js` | 新規テストファイル | なし |
+| `tests/character.test.js` | 既存ファイルにスタイル別分岐テスト追記 | 低: 既存テスト維持 |
 | `api/generate-image.js` | 変更なし（character.jsが吸収） | - |
 
 ---
@@ -281,7 +351,7 @@ describe('composeImagePrompt - スタイル別分岐', () => {
 2. **`lib/character.js`の改修** — resolveStyleAttributes() + composeImagePrompt()改修
 3. **スタイル不整合検出の追加** — detectStyleConflict()
 4. **テスト作成** — tests/character.test.js
-5. **全テスト実行** — `npm test`で既存168テスト + 新規テスト通過確認
+5. **全テスト実行** — `npm test`で既存テスト全件 + 新規テスト通過確認
 6. **手動検証** — 両スタイルで画像生成し、目のレンダリングを目視確認
 
 ---
@@ -314,4 +384,4 @@ describe('composeImagePrompt - スタイル別分岐', () => {
 ---
 
 *作成日: 2026-03-23*
-*ステータス: codex-review待ち*
+*ステータス: codex-review arch通過 → 実装中*

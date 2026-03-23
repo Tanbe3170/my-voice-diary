@@ -55,6 +55,46 @@ function createValidCharacter(overrides = {}) {
   };
 }
 
+// styleOverrides付きキャラクター設定
+function createCharacterWithStyleOverrides(overrides = {}) {
+  return createValidCharacter({
+    imageGeneration: {
+      basePrompt: 'A cute chibi Quetzalcoatlus pterosaur character',
+      negativePrompt: 'photorealistic, dark, horror',
+      styleModifiers: ['soft lighting', 'warm color palette'],
+      craftAnalysis: {
+        color: 'warm earth tones',
+        rendering: 'clean digital illustration',
+        atmosphere: 'friendly, kawaii',
+      },
+      styleOverrides: {
+        illustration: {
+          basePrompt: 'A cute chibi Quetzalcoatlus, kawaii cartoon style',
+          eyeDescriptor: 'small round amber-orange eye with round black pupil and single bright catchlight',
+          consistencyKeywords: ['chibi quetzalcoatlus', 'small round amber eye with catchlight'],
+          craftAnalysis: {
+            color: 'warm earth tones with cream accents, limited palette',
+            rendering: 'flat illustration with bold outlines',
+            atmosphere: 'friendly, approachable, educational clarity',
+          },
+        },
+        oilpainting: {
+          basePrompt: 'A scientifically accurate Quetzalcoatlus northropi azhdarchid pterosaur, anatomically correct proportions',
+          eyeDescriptor: 'realistic detailed pterosaur eye with round bird-like pupil, dark amber-brown iris',
+          negativePrompt: 'photorealistic, dark, horror, kawaii, chibi, anime eyes, cartoon, cute',
+          consistencyKeywords: ['anatomically accurate quetzalcoatlus', 'realistic bird-like eye with round pupil'],
+          craftAnalysis: {
+            color: 'muted naturalistic earth tones, golden amber highlights',
+            rendering: 'acrylic paleoart painting, soft layered brushwork',
+            atmosphere: 'serene documentary, environmental storytelling',
+          },
+        },
+      },
+      ...overrides,
+    },
+  });
+}
+
 // GitHub APIレスポンスのヘルパー
 function githubApiResponse(character) {
   const content = Buffer.from(JSON.stringify(character)).toString('base64');
@@ -367,5 +407,160 @@ describe('injectCharacterPrompt', () => {
     const result = injectCharacterPrompt('base', character);
 
     expect(result).toContain('Quetzalcoatlus northropi');
+  });
+});
+
+// ===================================================================
+// composeImagePrompt - スタイル別分岐
+// ===================================================================
+
+describe('composeImagePrompt - スタイル別分岐', () => {
+  it('illustration: chibi basePromptと小さい丸い目を使用', () => {
+    const character = createCharacterWithStyleOverrides();
+    const result = composeImagePrompt('A sunny park scene', character, 'illustration');
+
+    expect(result.prompt).toContain('kawaii cartoon style');
+    expect(result.prompt).toContain('small round amber-orange eye');
+  });
+
+  it('oilpainting: 写実的basePromptと鳥類型目を使用', () => {
+    const character = createCharacterWithStyleOverrides();
+    const result = composeImagePrompt('A sunny park scene', character, 'oilpainting');
+
+    expect(result.prompt).toContain('scientifically accurate Quetzalcoatlus');
+    expect(result.prompt).toContain('realistic detailed pterosaur eye');
+    expect(result.prompt).toContain('bird-like pupil');
+  });
+
+  it('oilpainting: negativePromptにkawaii/chibiが含まれる', () => {
+    const character = createCharacterWithStyleOverrides();
+    const result = composeImagePrompt('A sunny park scene', character, 'oilpainting');
+
+    expect(result.negativePrompt).toContain('kawaii');
+    expect(result.negativePrompt).toContain('chibi');
+    expect(result.negativePrompt).toContain('anime eyes');
+  });
+
+  it('不明なstyleId: デフォルトbasePromptにフォールバック', () => {
+    const character = createCharacterWithStyleOverrides();
+    const result = composeImagePrompt('A sunny park scene', character, 'watercolor');
+
+    // デフォルトのbasePromptが使用される
+    expect(result.prompt).toContain('A cute chibi Quetzalcoatlus pterosaur character');
+    // eyeDescriptorはないのでEye detailが含まれない
+    expect(result.prompt).not.toContain('Eye detail');
+  });
+
+  it('styleOverrides未定義: デフォルトにフォールバック', () => {
+    const character = createValidCharacter(); // styleOverridesなし
+    const result = composeImagePrompt('A sunny park scene', character, 'illustration');
+
+    // デフォルトのbasePromptが使用される
+    expect(result.prompt).toContain('A cute chibi Quetzalcoatlus pterosaur character');
+    // eyeDescriptorがないのでEye detailが含まれない
+    expect(result.prompt).not.toContain('Eye detail');
+  });
+
+  it('eyeDescriptorがプロンプトに含まれること', () => {
+    const character = createCharacterWithStyleOverrides();
+    const result = composeImagePrompt('test scene', character, 'illustration');
+
+    expect(result.prompt).toContain('Eye detail (IMPORTANT):');
+    expect(result.prompt).toContain('small round amber-orange eye');
+  });
+
+  it('スタイル不整合検出が警告を出す', () => {
+    const warnSpy = vi.spyOn(console, 'warn');
+
+    // kawaii basePromptをoilpaintingスタイルで使用するとスタイル不整合
+    const character = createValidCharacter({
+      imageGeneration: {
+        basePrompt: 'A cute chibi kawaii Quetzalcoatlus',
+        negativePrompt: 'dark, horror',
+        styleModifiers: ['soft lighting'],
+        craftAnalysis: {
+          color: 'warm tones',
+          rendering: 'digital illustration',
+          atmosphere: 'friendly',
+        },
+      },
+    });
+    composeImagePrompt('test scene', character, 'oilpainting');
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[STYLE_CONFLICT]')
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('kawaii')
+    );
+    warnSpy.mockRestore();
+  });
+});
+
+// ===================================================================
+// composeImagePrompt - craftAnalysis互換（resolveStyleAttributes振る舞い検証）
+// ===================================================================
+
+describe('composeImagePrompt - craftAnalysis互換', () => {
+  it('v1(flat craftAnalysis): Colorセクションが合成結果に含まれる', () => {
+    const character = createValidCharacter(); // v1フラット形式
+    const result = composeImagePrompt('test scene', character, 'illustration');
+
+    expect(result.prompt).toContain('Color: warm earth tones');
+    expect(result.prompt).toContain('Rendering: clean digital illustration');
+    expect(result.prompt).toContain('Atmosphere: friendly, kawaii');
+  });
+
+  it('v2(nested craftAnalysis): styleId対応のColorセクションが使用される', () => {
+    const character = createValidCharacter({
+      imageGeneration: {
+        basePrompt: 'A cute chibi Quetzalcoatlus pterosaur character',
+        negativePrompt: 'dark, horror',
+        styleModifiers: ['soft lighting'],
+        craftAnalysis: {
+          illustration: {
+            color: 'vibrant colors for illustration',
+            rendering: 'flat illustration rendering',
+            atmosphere: 'cheerful illustration atmosphere',
+          },
+          oilpainting: {
+            color: 'muted earth tones for painting',
+            rendering: 'oil painting rendering',
+            atmosphere: 'serene painting atmosphere',
+          },
+        },
+      },
+    });
+
+    const result = composeImagePrompt('test scene', character, 'illustration');
+    expect(result.prompt).toContain('Color: vibrant colors for illustration');
+    expect(result.prompt).toContain('Rendering: flat illustration rendering');
+
+    const result2 = composeImagePrompt('test scene', character, 'oilpainting');
+    expect(result2.prompt).toContain('Color: muted earth tones for painting');
+    expect(result2.prompt).toContain('Rendering: oil painting rendering');
+  });
+
+  it('styleOverrides内craftAnalysisが最優先で使用される', () => {
+    const character = createCharacterWithStyleOverrides();
+    const result = composeImagePrompt('test scene', character, 'illustration');
+
+    // styleOverrides.illustration.craftAnalysisが使用される
+    expect(result.prompt).toContain('Color: warm earth tones with cream accents, limited palette');
+    expect(result.prompt).toContain('Rendering: flat illustration with bold outlines');
+  });
+
+  it('craftAnalysis未定義: Colorセクションが省略される', () => {
+    const character = createValidCharacter({
+      imageGeneration: {
+        basePrompt: 'A cute chibi Quetzalcoatlus pterosaur character',
+        negativePrompt: 'dark, horror',
+        styleModifiers: ['soft lighting'],
+        // craftAnalysis未定義
+      },
+    });
+    const result = composeImagePrompt('test scene', character, 'illustration');
+
+    expect(result.prompt).not.toContain('Color:');
   });
 });

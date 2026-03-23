@@ -25,7 +25,7 @@
       "small stubby wings",
       "pycnofiber-covered body",
       "warm brown and cream tones",
-      "large expressive eyes",
+      "small round amber eye with catchlight",
       "2-3 head proportion"
     ],
     "scientificFeatures": {
@@ -46,7 +46,47 @@
     "primaryBackend": "gemini",
     "primaryModel": "nb2",
     "fallbackChain": ["nbpro", "dalle"],
-    "basePrompt": "A cute chibi Quetzalcoatlus pterosaur character, 2-3 head proportion, oversized head with long pointed toothless beak, small sagittal crest on top, body covered in soft pycnofibers giving fluffy appearance, stubby folded wings, warm brown and cream countershading coloring, large expressive friendly eyes, kawaii cartoon style with scientifically accurate silhouette",
+    "basePrompt": "A cute chibi Quetzalcoatlus pterosaur character, 2-3 head proportion, oversized head with long pointed toothless beak, small sagittal crest on top, body covered in soft pycnofibers giving fluffy appearance, stubby folded wings, warm brown and cream countershading coloring, kawaii cartoon style with scientifically accurate silhouette",
+    "styleOverrides": {
+      "illustration": {
+        "basePrompt": "A cute chibi Quetzalcoatlus pterosaur character, 2-3 head proportion, oversized head with long pointed toothless beak, small sagittal crest on top, body covered in soft pycnofibers giving fluffy appearance, stubby folded wings, warm brown and cream countershading coloring, kawaii cartoon style with scientifically accurate silhouette",
+        "eyeDescriptor": "small round amber-orange eye with round black pupil and single bright catchlight, simple but lively, stylized minimal detail",
+        "consistencyKeywords": [
+          "chibi quetzalcoatlus",
+          "oversized head",
+          "long pointed beak",
+          "small stubby wings",
+          "pycnofiber-covered body",
+          "warm brown and cream tones",
+          "small round amber eye with catchlight",
+          "2-3 head proportion"
+        ],
+        "craftAnalysis": {
+          "color": "warm earth tones with cream accents, soft contrast, limited palette",
+          "rendering": "flat illustration with bold outlines, geometric simplification",
+          "atmosphere": "friendly, approachable, educational clarity"
+        }
+      },
+      "oilpainting": {
+        "basePrompt": "A scientifically accurate Quetzalcoatlus northropi azhdarchid pterosaur, anatomically correct proportions with massive wingspan, long toothless beak, small sagittal crest, body covered in fine pycnofibers, warm brown dorsal and pale cream ventral countershading, naturally posed in prehistoric environment",
+        "eyeDescriptor": "realistic detailed pterosaur eye with round bird-like pupil, dark amber-brown iris reflecting ambient environmental light, subtle catchlight conveying awareness and intelligence, anatomically accurate eye placement and scale based on extant archosaur relatives, no exaggeration",
+        "negativePrompt": "photorealistic, dark, horror, violent, scary, dragon, bat wings, teeth, feathers instead of pycnofibers, kawaii, chibi, anime eyes, cartoon, cute",
+        "consistencyKeywords": [
+          "anatomically accurate quetzalcoatlus",
+          "correct body proportions",
+          "long toothless beak",
+          "fine pycnofiber covering",
+          "warm brown and cream countershading",
+          "realistic bird-like eye with round pupil",
+          "natural behavioral pose"
+        ],
+        "craftAnalysis": {
+          "color": "muted naturalistic earth tones, golden amber highlights, cool blue-grey shadows",
+          "rendering": "acrylic paleoart painting, soft layered brushwork, atmospheric depth",
+          "atmosphere": "serene documentary, environmental storytelling, prehistoric wilderness"
+        }
+      }
+    },
     "negativePrompt": "photorealistic, dark, horror, violent, scary, dragon, bat wings, teeth, feathers instead of pycnofibers",
     "styleModifiers": ["soft lighting", "warm color palette", "friendly atmosphere", "clean background"],
     "craftAnalysis": {
