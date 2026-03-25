@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(tail:*)",
+      "Bash(advisory\",:*)",
+      "Bash(security)",
+      "Bash(perf)",
+      "Bash(maintainability)",
+      "Bash(testing)",
+      "Bash(style\",:*)",
+      "WebSearch",
+      "WebFetch(domain:keyframemagazine.org)",
+      "WebFetch(domain:pablonotpicasso.tumblr.com)",
+      "WebFetch(domain:pablonotpicasso.art)",
+      "WebFetch(domain:cara.app)",
+      "Bash(npm test:*)",
+      "Bash(npx vitest:*)",
+      "WebFetch(domain:ai.google.dev)",
+      "WebFetch(domain:developers.googleblog.com)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(node scripts/:*)",
+      "Bash(npx block-no-verify:*)"
+    ]
+  }
+}

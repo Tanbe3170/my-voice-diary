@@ -386,8 +386,50 @@ export GITHUB_TOKEN="ghp_..."
 
 ---
 
-*最終更新: 2026年3月17日*
+*最終更新: 2026年3月25日*
 *現在のフェーズ: Phase 5.5 完了（Bluesky + Threads投稿機能追加 + Bluesky画像圧縮）*
+
+---
+
+## ECC（Everything Claude Code）コンポーネント
+
+本プロジェクトで活用すべきECCエージェント・スキルの一覧。
+
+### 推奨エージェント（自動使用）
+
+| エージェント | 使用タイミング | 優先度 |
+|-------------|---------------|--------|
+| **code-reviewer** | コード変更後に即座にレビュー | HIGH |
+| **security-reviewer** | 認証・入力処理・API変更時 | HIGH |
+| **typescript-reviewer** | JS/TSファイル変更時のPRレビュー | HIGH |
+| **tdd-guide** | 新機能開発時にテストファースト | HIGH |
+| **build-error-resolver** | ビルド・テストエラー発生時 | MEDIUM |
+| **architect** | アーキテクチャ変更・新機能設計時 | MEDIUM |
+| **planner** | 複雑な実装計画の作成 | MEDIUM |
+| **refactor-cleaner** | 不要コードの検出・削除 | LOW |
+
+### 推奨スキル
+
+| スキル | 使用場面 |
+|--------|---------|
+| **coding-standards** | コーディング規約の適用・確認 |
+| **api-design** | 新しいAPIエンドポイント設計 |
+| **backend-patterns** | ミドルウェア、キャッシュ、サービス層の設計 |
+| **security-review** | デプロイ前のセキュリティ監査 |
+| **tdd-workflow** | テスト駆動開発の実践 |
+| **verification-loop** | PR作成前の品質ゲート |
+| **claude-api** | Claude API連携パターン |
+| **ai-regression-testing** | AI生成コードのリグレッション防止 |
+| **cost-aware-llm-pipeline** | Claude/DALL-E APIコスト最適化 |
+
+### プロジェクトルール（.claude/rules/）
+
+| ルール | 内容 |
+|--------|------|
+| `coding-style.md` | JSコーディングスタイル、イミュータビリティ、JSDoc |
+| `security.md` | セキュリティチェックリスト、プロジェクト固有の認証パターン |
+| `testing.md` | vitest、TDD、モック対象、カバレッジ要件 |
+| `development-workflow.md` | 開発フロー、リサーチ→計画→TDD→レビュー→コミット |
 
 # Plan Creation
 
