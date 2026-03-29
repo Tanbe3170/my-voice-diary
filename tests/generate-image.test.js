@@ -1020,6 +1020,55 @@ describe('generate-image API', () => {
       expect(res._status).toBe(401);
       expect(res._json.error).toContain('認証');
     });
+
+    it('popillustスタイルで正常に画像生成できること', async () => {
+      globalThis.fetch = vi.fn(async (url) => {
+        if (url.includes('upstash') && url.includes('incr')) {
+          return { ok: true, json: async () => ({ result: 1 }) };
+        }
+        if (url.includes('upstash') && url.includes('expire')) {
+          return { ok: true, json: async () => ({ result: 1 }) };
+        }
+        if (url.includes('api.github.com') && url.includes('contents/diaries')) {
+          const content = Buffer.from('---\nimage_prompt: "A test image prompt"\n---\n# Test', 'utf-8').toString('base64');
+          return { ok: true, json: async () => ({ content, sha: 'abc123' }) };
+        }
+        if (url.includes('api.github.com') && url.includes('contents/docs')) {
+          return { ok: true, json: async () => ({}) };
+        }
+        return { ok: true, json: async () => ({}) };
+      });
+
+      mockGenerateImageWithFallback.mockResolvedValue({
+        imageData: Buffer.from('fake-png').toString('base64'),
+        backend: 'dalle3',
+      });
+
+      const req = createMockReq({
+        body: {
+          date: '2026-02-19',
+          imageToken: createValidToken('2026-02-19', undefined, '', 'normal', 'popillust'),
+          styleId: 'popillust',
+        },
+      });
+      const res = createMockRes();
+      await handler(req, res);
+      expect(res._status).toBe(200);
+    });
+
+    it('__proto__をstyleIdとして送信すると400を返すこと', async () => {
+      globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => ({}) }));
+      const req = createMockReq({
+        body: {
+          date: '2026-02-19',
+          imageToken: createValidToken('2026-02-19', undefined, '', 'normal', '__proto__'),
+          styleId: '__proto__',
+        },
+      });
+      const res = createMockRes();
+      await handler(req, res);
+      expect(res._status).toBe(400);
+    });
   });
 
   // =================================================================

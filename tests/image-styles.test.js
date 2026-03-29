@@ -23,6 +23,11 @@ describe('IMAGE_STYLES定義', () => {
     expect(IMAGE_STYLES.oilpainting.name).toBe('パレオアート');
   });
 
+  it('popillustスタイルが定義されていること', () => {
+    expect(IMAGE_STYLES.popillust).toBeDefined();
+    expect(IMAGE_STYLES.popillust.name).toBe('ポップイラスト');
+  });
+
   it('各スタイルのpromptPrefixが空でないこと', () => {
     for (const [id, style] of Object.entries(IMAGE_STYLES)) {
       expect(style.promptPrefix, `${id}.promptPrefix`).toBeTruthy();
@@ -70,6 +75,19 @@ describe('getStyle', () => {
     expect(style.promptPrefix).toContain('paleoart');
   });
 
+  it('popillustのスタイル定義を返すこと', () => {
+    const style = getStyle('popillust');
+    expect(style).not.toBeNull();
+    expect(style.name).toBe('ポップイラスト');
+    expect(style.promptPrefix).toContain('pop-art');
+  });
+
+  it('__proto__でnullを返すこと（プロトタイプ汚染防止）', () => {
+    expect(getStyle('__proto__')).toBeNull();
+    expect(getStyle('constructor')).toBeNull();
+    expect(getStyle('toString')).toBeNull();
+  });
+
   it('未知のstyleIdでnullを返すこと（フォールバックなし）', () => {
     expect(getStyle('unknown')).toBeNull();
     expect(getStyle('watercolor')).toBeNull();
@@ -89,6 +107,16 @@ describe('isValidStyleId', () => {
 
   it('oilpaintingでtrueを返すこと', () => {
     expect(isValidStyleId('oilpainting')).toBe(true);
+  });
+
+  it('popillustでtrueを返すこと', () => {
+    expect(isValidStyleId('popillust')).toBe(true);
+  });
+
+  it('__proto__/constructorでfalseを返すこと（プロトタイプ汚染防止）', () => {
+    expect(isValidStyleId('__proto__')).toBe(false);
+    expect(isValidStyleId('constructor')).toBe(false);
+    expect(isValidStyleId('toString')).toBe(false);
   });
 
   it('不明なキーでfalseを返すこと', () => {
@@ -136,6 +164,11 @@ describe('getStyleClaudeInstruction', () => {
   it('illustrationのclaudeInstructionを返すこと', () => {
     const inst = getStyleClaudeInstruction('illustration');
     expect(inst).toContain('フラットイラスト調');
+  });
+
+  it('popillustのclaudeInstructionを返すこと', () => {
+    const inst = getStyleClaudeInstruction('popillust');
+    expect(inst).toContain('ポップアートイラスト調');
   });
 
   it('未知のstyleIdでnullを返すこと', () => {

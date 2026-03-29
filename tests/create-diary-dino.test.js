@@ -354,6 +354,15 @@ describe('create-diary API characterId機能', () => {
   });
 
   // =================================================================
+  // テスト10.5: popillustスタイルのclaudeInstruction取得
+  // =================================================================
+  it('popillustスタイルのclaudeInstructionが取得できること', async () => {
+    const { getStyleClaudeInstruction } = await import('../lib/image-styles.js');
+    const instruction = getStyleClaudeInstruction('popillust');
+    expect(instruction).toContain('ポップアートイラスト調');
+  });
+
+  // =================================================================
   // テスト11: レスポンスにstyleIdが含まれること
   // =================================================================
   it('レスポンスにstyleIdが含まれること', async () => {
