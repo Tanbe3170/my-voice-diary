@@ -446,6 +446,19 @@ At key milestones—after updating specs/plans, after major implementation steps
 
 When implementing features or making code changes, use the Tasks feature to manage and track progress. Break down the work into clear steps and update task status as you proceed.
 
+# Cross-Project Plan Synchronization
+
+This project is part of a 3-project integration (owl-encyclopedia, diary, what-if). Each project has its own `plans/cross-project-integration-plan.md`.
+
+**After any integration-related implementation or change affecting cross-project concerns:**
+1. Update `plans/cross-project-integration-plan.md` in the current project
+2. Update `plans/cross-project-integration-plan.md` in all affected sibling projects:
+   - owl-encyclopedia: `/home/minori/workspace/owl-encyclopedia/plans/cross-project-integration-plan.md`
+   - what-if: `/home/minori/workspace/what-if/plans/cross-project-integration-plan.md`
+3. Update HANDOFF documents if they exist (`HANDOFF_CROSS_PROJECT.md`)
+
+This ensures all projects stay in sync and no plan becomes stale.
+
 # Other
 
 When asking for a decision, use "AskUserQuestion".

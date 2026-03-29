@@ -2,6 +2,7 @@
 ## diary 視点
 
 > 作成日: 2026-03-27
+> 最終更新: 2026-03-29（画像スタイル選択追加の影響反映）
 > 対象: diary (Vercel Serverless + GitHub Pages)
 > 関連: owl-encyclopedia, what-if
 
@@ -71,6 +72,17 @@ export async function sendToOwlEncyclopedia(researchData, sourceUrl) {
     }
 }
 ```
+
+### 画像スタイル選択との関係（2026-03-29 追記）
+
+diary に追加された画像スタイル選択（`styleId`: `illustration`/`oilpainting`/`popillust`）と、owl-encyclopedia 連携 Webhook は**独立した機能**である。
+
+- **Webhook 送信対象**: リサーチの構造化データ（title, slug, topic, category, summary, keyPoints, body, sources, tags）のみ
+- **画像関連データ**: Webhook ペイロードに含めない（画像生成はdiary内部で完結）
+- **`mode` フィールド**: `dino-research` モードのリサーチ出力のみを Webhook 送信対象とする場合、`create-research.js` 内で mode チェックを追加可能
+
+**将来の拡張（Phase 2 実装時に要判断）:**
+owl-encyclopedia 側でリサーチに紐づく画像情報（生成画像URL、使用スタイル）を保持したい場合、Webhook ペイロードに `imageUrl` と `imageStyle` を追加する拡張が可能。この場合 owl-encyclopedia 側の DTO・DB スキーマの拡張も必要となる。
 
 ### 変更2: create-research.js への統合
 
@@ -145,6 +157,7 @@ Vercel Dashboard に以下を追加:
 | 既存日記作成機能 | **影響なし** |
 | 既存リサーチ機能 | **影響なし**（GitHub保存は維持） |
 | 既存SNS投稿機能 | **影響なし** |
+| 画像スタイル選択機能 | **影響なし**（styleId/image_styleはdiary内部で完結、Webhookペイロードに含まない） |
 | 既存168テスト | **影響なし**（全テスト通過を確認） |
 | 新規ファイル | `lib/owl-api.js`, `tests/owl-api.test.js` の2ファイル |
 | 変更ファイル | `api/create-research.js` (import + try-catch追加), `docs/diary-input.html` (URLパラメータ15行追加) |
