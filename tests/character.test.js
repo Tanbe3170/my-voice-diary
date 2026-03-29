@@ -495,6 +495,58 @@ describe('composeImagePrompt - スタイル別分岐', () => {
     );
     warnSpy.mockRestore();
   });
+
+  it('popillustスタイルでpromptPrefix内のNOTキーワードが自己衝突しないこと', () => {
+    const warnSpy = vi.spyOn(console, 'warn');
+
+    const character = createValidCharacter({
+      imageGeneration: {
+        basePrompt: 'A cute chibi Quetzalcoatlus pterosaur character',
+        negativePrompt: 'dark, horror',
+        styleModifiers: ['soft lighting'],
+        craftAnalysis: {
+          color: 'vibrant neon colors',
+          rendering: 'cel-shaded digital',
+          atmosphere: 'energetic, dynamic',
+        },
+      },
+    });
+    composeImagePrompt('test scene', character, 'popillust');
+
+    const conflictCalls = warnSpy.mock.calls.filter(
+      call => typeof call[0] === 'string' && call[0].includes('[STYLE_CONFLICT]')
+    );
+    expect(conflictCalls).toHaveLength(0);
+    warnSpy.mockRestore();
+  });
+
+  it('popillustスタイルでNOT後に肯定文脈の衝突語があれば警告が出ること', () => {
+    const warnSpy = vi.spyOn(console, 'warn');
+
+    // basePromptに衝突語を含めず、craftAnalysisのみにmutedを配置
+    // promptPrefix内の"NOT muted"が先行出現し、craftAnalysis内の肯定mutedが後続出現するケース
+    const character = createValidCharacter({
+      imageGeneration: {
+        basePrompt: 'A cute chibi Quetzalcoatlus pterosaur character',
+        negativePrompt: 'dark, horror',
+        styleModifiers: ['soft lighting'],
+        craftAnalysis: {
+          color: 'muted earth tones',
+          rendering: 'cel-shaded digital',
+          atmosphere: 'energetic',
+        },
+      },
+    });
+    composeImagePrompt('test scene', character, 'popillust');
+
+    const conflictCalls = warnSpy.mock.calls.filter(
+      call => typeof call[0] === 'string' && call[0].includes('[STYLE_CONFLICT]')
+    );
+    expect(conflictCalls.length).toBeGreaterThan(0);
+    // mutedが検出されていることを具体的に確認
+    expect(conflictCalls[0][0]).toContain('muted');
+    warnSpy.mockRestore();
+  });
 });
 
 // ===================================================================

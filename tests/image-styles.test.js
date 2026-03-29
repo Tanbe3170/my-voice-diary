@@ -10,6 +10,7 @@ import {
   getStylePromptPrefix,
   getStyleNegativePrompt,
   getStyleClaudeInstruction,
+  getStyleConflicts,
 } from '../lib/image-styles.js';
 
 describe('IMAGE_STYLES定義', () => {
@@ -26,6 +27,12 @@ describe('IMAGE_STYLES定義', () => {
   it('popillustスタイルが定義されていること', () => {
     expect(IMAGE_STYLES.popillust).toBeDefined();
     expect(IMAGE_STYLES.popillust.name).toBe('ポップイラスト');
+  });
+
+  it('各スタイルにstyleConflictsが配列で定義されていること', () => {
+    for (const [id, style] of Object.entries(IMAGE_STYLES)) {
+      expect(Array.isArray(style.styleConflicts), `${id}.styleConflicts`).toBe(true);
+    }
   });
 
   it('各スタイルのpromptPrefixが空でないこと', () => {
@@ -173,5 +180,23 @@ describe('getStyleClaudeInstruction', () => {
 
   it('未知のstyleIdでnullを返すこと', () => {
     expect(getStyleClaudeInstruction('unknown')).toBeNull();
+  });
+});
+
+describe('getStyleConflicts', () => {
+  it('oilpaintingの衝突語リストを返すこと', () => {
+    const conflicts = getStyleConflicts('oilpainting');
+    expect(conflicts).toContain('kawaii');
+    expect(conflicts).toContain('chibi');
+  });
+
+  it('popillustの衝突語リストを返すこと', () => {
+    const conflicts = getStyleConflicts('popillust');
+    expect(conflicts).toContain('photorealistic');
+    expect(conflicts).toContain('watercolor');
+  });
+
+  it('未知のstyleIdで空配列を返すこと', () => {
+    expect(getStyleConflicts('unknown')).toEqual([]);
   });
 });
