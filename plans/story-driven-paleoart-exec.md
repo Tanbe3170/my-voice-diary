@@ -278,6 +278,139 @@ describe('buildPrompt - styleId伝播によるimage_prompt指示分岐', () => {
 
 **注意:** `buildPrompt`もnamed export化が必要（`export function buildPrompt`）。
 
+**(c) APIハンドラ経由の統合テスト（4件）— 実運用経路のstyleId伝播検証:**
+
+> **[Codex archレビュー反復3 blocking対応]** `buildPrompt`直呼びテスト（Step 3-2b）だけでは`handler`内の引数渡し漏れ・順序ミスを検出できない。`create-diary-dino.test.js`の`lastClaudePrompt`キャプチャパターンを踏襲し、APIハンドラ経由でClaude送信プロンプトにstyle別schema文言が入ることを検証する。
+
+**ファイル:** `tests/create-diary-schema.test.js`（Step 3-2a/bと同一ファイル）
+
+```javascript
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { signJwt } from '../lib/jwt.js';
+
+const JWT_SECRET = 'test-jwt-secret-key-for-schema-tests';
+
+function createValidJwt() {
+  const now = Math.floor(Date.now() / 1000);
+  return signJwt({ sub: 'diary-admin', iat: now, exp: now + 3600 }, JWT_SECRET);
+}
+
+describe('handler経由 styleId伝播テスト', () => {
+  let handler;
+  let originalFetch;
+  let lastClaudePrompt;
+
+  beforeEach(async () => {
+    Object.assign(process.env, {
+      JWT_SECRET,
+      CLAUDE_API_KEY: 'sk-ant-test-key',
+      UPSTASH_REDIS_REST_URL: 'https://test-redis.upstash.io',
+      UPSTASH_REDIS_REST_TOKEN: 'test-redis-token',
+      GITHUB_TOKEN: 'ghp_test',
+      GITHUB_OWNER: 'TestOwner',
+      GITHUB_REPO: 'test-repo',
+      IMAGE_TOKEN_SECRET: 'test-image-secret',
+      VERCEL_PROJECT_PRODUCTION_URL: 'my-voice-diary.vercel.app',
+    });
+    originalFetch = globalThis.fetch;
+    lastClaudePrompt = null;
+    vi.resetModules();
+    const mod = await import('../api/create-diary.js');
+    handler = mod.default;
+  });
+
+  afterEach(() => { globalThis.fetch = originalFetch; });
+
+  function setupFetchMock() {
+    globalThis.fetch = vi.fn(async (url, opts) => {
+      if (url.includes('upstash') && url.includes('incr'))
+        return { ok: true, json: async () => ({ result: 1 }) };
+      if (url.includes('upstash') && url.includes('expire'))
+        return { ok: true, json: async () => ({ result: 1 }) };
+      if (url.includes('api.anthropic.com')) {
+        if (opts?.body) {
+          const body = JSON.parse(opts.body);
+          lastClaudePrompt = body.messages[0].content;
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            content: [{ text: JSON.stringify({
+              date: '2026-03-30', title: 'テスト', summary: 'サマリー',
+              body: '本文', tags: ['#test'],
+              image_prompt: 'A dramatic scene',
+            }) }],
+          }),
+        };
+      }
+      if (url.includes('github'))
+        return { ok: true, json: async () => ({ content: { sha: 'abc123' } }) };
+      return { ok: true, json: async () => ({}) };
+    });
+  }
+
+  function createReq(mode, styleId) {
+    return {
+      method: 'POST',
+      headers: {
+        origin: 'https://my-voice-diary.vercel.app',
+        'content-type': 'application/json',
+        'x-auth-token': createValidJwt(),
+        'x-forwarded-for': '192.168.1.1',
+      },
+      body: { rawText: '今日はテストの日です。', styleId, mode },
+      socket: { remoteAddress: '127.0.0.1' },
+    };
+  }
+
+  function createRes() {
+    const res = {
+      _status: null, _json: null, _headers: {},
+      setHeader(k, v) { this._headers[k] = v; return this; },
+      status(c) { this._status = c; return this; },
+      json(d) { this._json = d; return this; },
+      end() { return this; },
+    };
+    return res;
+  }
+
+  it('handler経由: normalモード+oilpaintingでClaude送信にstory-driven文言', async () => {
+    setupFetchMock();
+    const res = createRes();
+    await handler(createReq('normal', 'oilpainting'), res);
+    expect(res._status).toBe(200);
+    expect(lastClaudePrompt).toContain('最も劇的・印象的な瞬間');
+    expect(lastClaudePrompt).toContain('物語的意味');
+  });
+
+  it('handler経由: dino-storyモード+oilpaintingでClaude送信にstory-driven文言', async () => {
+    setupFetchMock();
+    const res = createRes();
+    await handler(createReq('dino-story', 'oilpainting'), res);
+    expect(res._status).toBe(200);
+    expect(lastClaudePrompt).toContain('最も劇的・印象的な瞬間');
+  });
+
+  it('handler経由: dino-researchモード+oilpaintingでClaude送信にstory-driven文言', async () => {
+    setupFetchMock();
+    const res = createRes();
+    await handler(createReq('dino-research', 'oilpainting'), res);
+    expect(res._status).toBe(200);
+    expect(lastClaudePrompt).toContain('最も劇的・印象的な瞬間');
+    expect(lastClaudePrompt).toContain('物語的意味');
+  });
+
+  it('handler経由: normalモード+illustrationでは従来の汎用指示', async () => {
+    setupFetchMock();
+    const res = createRes();
+    await handler(createReq('normal', 'illustration'), res);
+    expect(res._status).toBe(200);
+    expect(lastClaudePrompt).toContain('中核エピソード');
+    expect(lastClaudePrompt).not.toContain('物語的意味');
+  });
+});
+```
+
 #### Step 3-3: `character.test.js` — プロンプト順序検証
 
 **ファイル:** `tests/character.test.js`
@@ -301,28 +434,64 @@ it('Scene要素がArt style要素より前に来ること', () => {
 });
 ```
 
-**(b) DALL-E 1000文字切り詰め時のスタイル残存テスト（2件）:**
+**(b) DALL-E 1000文字切り詰め時のスタイル残存テスト — 目的別2グループ（4件）:**
 
-> **[Codex archレビュー advisory対応]** Scene先頭化による全スタイルへの影響を検証。DALL-E 3の1000文字制限で`Art style:`が切り落とされないことを確認。
+> **[Codex archレビュー advisory対応 + 反復3/4 blocking対応]** テスト目的を分離する。
+> - **グループ1: 実運用境界（500文字Scene）** — `image_prompt`上限500文字での`Art style:`残存を保証。DALL-E 3に渡す先頭1000文字にスタイル識別語が含まれることを検証。
+> - **グループ2: 3800文字最悪条件** — Scene先頭化+3200文字Sceneでは先頭1000文字がScene内容で埋まるため、`Art style:`は切り落とされる。このときプロンプト全体（3800文字）には`Art style:`が含まれることを検証し、Gemini系バックエンド（制限なし）では問題ないことを確認。DALL-E 3フォールバック時は情報欠落が起きるが、実運用では`image_prompt`は500文字以内のためリスク許容。
 
 ```javascript
-it('illustration: 長いScene + 長いbasePromptでも先頭1000文字内にArt styleが残ること', () => {
+// --- グループ1: 実運用境界（image_prompt上限500文字） ---
+
+it('illustration: 500文字Sceneで先頭1000文字内にArt styleが残ること', () => {
   const character = createValidCharacter();
-  // 境界条件: Sceneを400文字程度にして先頭1000文字内のArt style残存を検証
-  const longScene = 'A dramatic survival scene in the ancient Cretaceous forest ' + 'with dense ferns and towering conifers '.repeat(8);
-  const result = composeImagePrompt(longScene, character, 'illustration');
+  const scene = 'A dramatic survival scene in the ancient Cretaceous forest '.padEnd(500, 'x');
+  const result = composeImagePrompt(scene, character, 'illustration');
   const first1000 = result.prompt.slice(0, 1000);
   expect(first1000).toContain('Art style:');
   expect(first1000).toContain('Flat illustration style');
 });
 
-it('popillust: 長いSceneでも先頭1000文字内にArt styleが残ること', () => {
+it('popillust: 500文字Sceneで先頭1000文字内にArt styleが残ること', () => {
   const character = createValidCharacter();
-  const longScene = 'A dramatic survival scene in the ancient Cretaceous forest ' + 'with dense ferns and towering conifers '.repeat(8);
-  const result = composeImagePrompt(longScene, character, 'popillust');
+  const scene = 'A dramatic survival scene in the ancient Cretaceous forest '.padEnd(500, 'x');
+  const result = composeImagePrompt(scene, character, 'popillust');
   const first1000 = result.prompt.slice(0, 1000);
   expect(first1000).toContain('Art style:');
   expect(first1000).toContain('Dynamic pop-art');
+});
+
+// --- グループ2: 3800文字最悪条件（何が切り落とされるかの検証） ---
+
+function createLongScene(targetLength) {
+  const base = 'A dramatic survival scene in the ancient Cretaceous forest ';
+  const filler = 'with dense ferns and towering conifers and flowing rivers through volcanic highlands ';
+  let scene = base;
+  while (scene.length < targetLength) { scene += filler; }
+  return scene.slice(0, targetLength);
+}
+
+it('3800文字最悪条件: 合成後プロンプト全体にArt styleが含まれること（Gemini用）', () => {
+  const character = createValidCharacter();
+  const longScene = createLongScene(3200);
+  const result = composeImagePrompt(longScene, character, 'oilpainting');
+  expect(result.prompt.length).toBeLessThanOrEqual(3800);
+  // Gemini系バックエンド（プライマリ）は制限なしのためプロンプト全体を使用
+  expect(result.prompt).toContain('Art style:');
+  expect(result.prompt).toContain('Acrylic paleoart');
+});
+
+it('3800文字最悪条件: 先頭1000文字はScene内容が支配し、Art styleは境界外に押し出されること', () => {
+  const character = createValidCharacter();
+  const longScene = createLongScene(3200);
+  const result = composeImagePrompt(longScene, character, 'oilpainting');
+  const first1000 = result.prompt.slice(0, 1000);
+  // Scene先頭化により、3200文字Sceneでは先頭1000文字がScene内容で埋まる
+  expect(first1000).toContain('Scene:');
+  // [Codex archレビュー反復5 blocking対応] Art styleが1000文字境界外に押し出されることを明示検証
+  expect(first1000).not.toContain('Art style:');
+  // DALL-E 3フォールバック時はスタイル情報欠落だが、
+  // 実運用ではimage_prompt<=500文字のためこの条件には達しない
 });
 ```
 
@@ -337,10 +506,11 @@ it('popillust: 長いSceneでも先頭1000文字内にArt styleが残ること',
 | 3 | Step 3-1: スタイルテスト追加 | `tests/image-styles.test.js` | 低 | テスト1件 |
 | 4 | Step 3-2a: スキーマ単体テスト追加 | `tests/create-diary-schema.test.js`（新規） | 低 | テスト3件 |
 | 4b | Step 3-2b: buildPrompt統合テスト追加 | `tests/create-diary-schema.test.js`（新規） | 低 | テスト4件（3モード+illustration逆検証） |
+| 4c | Step 3-2c: handler経由統合テスト追加 | `tests/create-diary-schema.test.js`（新規） | 低 | テスト4件（handler→buildPrompt実運用経路検証） |
 | 5 | **`npm test` — Phase 1動作確認** | — | — | 全テスト通過確認 |
 | 6 | Step 2-1: composeImagePrompt順序変更 | `lib/character.js` L265-276 | 中 | 配列要素移動1箇所 |
 | 7 | Step 3-3a: 順序検証テスト追加 | `tests/character.test.js` | 中 | テスト2件 |
-| 7b | Step 3-3b: DALL-E切り詰めスタイル残存テスト | `tests/character.test.js` | 中 | テスト2件 |
+| 7b | Step 3-3b: DALL-E切り詰めスタイル残存テスト（実運用境界+最悪条件） | `tests/character.test.js` | 中 | テスト4件（実運用2件+最悪条件2件） |
 | 8 | **`npm test` — Phase 2動作確認** | — | — | 全テスト通過確認 |
 
 ---
@@ -362,7 +532,7 @@ it('popillust: 長いSceneでも先頭1000文字内にArt styleが残ること',
 - [ ] JSON_OUTPUT_SCHEMAがoilpainting時にストーリー駆動のimage_prompt定義を使用する
 - [ ] composeImagePromptでScene要素がプロンプト先頭に配置される
 - [ ] 既存テスト全件パス
-- [ ] 追加テスト12件パス（スキーマ3件 + 統合4件 + 順序2件 + DALL-E切り詰め2件 + claudeInstruction1件）
+- [ ] 追加テスト18件パス（スキーマ3件 + buildPrompt統合4件 + handler統合4件 + 順序2件 + DALL-E境界4件 + claudeInstruction1件）
 - [ ] 手動テスト: oilpaintingで生成したimage_promptにストーリー要素が明確に含まれる
 - [ ] 手動テスト: illustration/popillustの画像品質に退行がない
 
