@@ -55,7 +55,7 @@
 
 | 段階 | 上限 | 参照 |
 |------|------|------|
-| Claude API出力 `image_prompt` | 500文字 | `create-diary.js:561` |
+| Claude API出力 `image_prompt` | 500文字（**サーバ側ハード制御**） | `create-diary.js:557-562`（`validateDiaryData`内で`>500`時に`substring(0, 500)`で切り詰め） |
 | `composeImagePrompt` 合成後 | 3800文字（slice） | `character.js:285` |
 | 警告閾値 | 900文字 | `prompt-policy.js:7` |
 | DALL-E 3 投入 | 1000文字（ハード切り詰め） | `image-backend.js:110-112` |
@@ -67,6 +67,35 @@
 ### Phase 1: Claude指示の強化（A-1, A-2）
 
 > 画像生成AI投入前の**image_prompt生成段階**を改善。他スタイルへの副作用なし。
+
+#### Step 1-0: image_prompt要件文言の共通定数化
+
+**ファイル:** 新規 `lib/image-prompt-requirements.js`
+**リスク:** 低（新ファイル追加のみ、既存コードへの影響なし）
+
+> **[Codex archレビュー反復8 blocking対応]** `claudeInstruction`と`JSON_OUTPUT_SCHEMA`でoilpainting向けストーリー駆動要件が二重管理になることを防止。共通定数を定義し、両者から参照する。
+
+```javascript
+// lib/image-prompt-requirements.js
+// image_prompt生成要件の共通定数（claudeInstruction / JSON_OUTPUT_SCHEMA 双方から参照）
+
+export const OILPAINTING_STORY_REQUIREMENTS =
+  'この日記のストーリーの最も劇的・印象的な瞬間を、パレオアート油絵の1シーンとして英語で描写するプロンプト（AI画像生成用）。' +
+  '主人公の具体的な行動・感情、シーンの物語的意味（転換点・対立・発見）、構図（カメラアングル）、' +
+  'ライティング（色温度と感情の対応）、環境ディテール（地質・植生・天候）を必ず含めること。';
+
+export const GENERIC_IMAGE_PROMPT_REQUIREMENTS =
+  'この日記の中核エピソードを1つの具体的な場面として描写する英語プロンプト（AI画像生成用）。' +
+  '抽象的な比喩や概念図ではなく、読者が画像を見ただけで日記の内容がわかるような印象的なワンシーンを詳細に記述する。' +
+  '被写体の行動・表情・場所・時間帯・周辺のディテールを具体的に含めること。';
+```
+
+**Step 1-1/1-2での参照方法:**
+- `claudeInstruction`（Step 1-1）: `OILPAINTING_STORY_REQUIREMENTS`を直接参照し、画風指定部分と連結する。例: `claudeInstruction: '画像プロンプトは、パレオアート調の油絵コンセプトアートとして、ストーリーの最も劇的な瞬間を1枚の絵で語るシーンを英語で記述。' + '【必須要素】...' + '【画風指定】...'` の構造において、【必須要素】の内容は`OILPAINTING_STORY_REQUIREMENTS`から抽出した定数を参照する
+- `JSON_OUTPUT_SCHEMA`（Step 1-2）: `styleId === 'oilpainting' ? OILPAINTING_STORY_REQUIREMENTS : GENERIC_IMAGE_PROMPT_REQUIREMENTS` で直接参照
+- **テスト:** Step 3-2aのスキーマ単体テストで「`JSON_OUTPUT_SCHEMA`の出力が`OILPAINTING_STORY_REQUIREMENTS`を含む」ことを検証（定数参照の一貫性保証、1件追加）
+
+---
 
 #### Step 1-1: oilpaintingの`claudeInstruction`強化
 
@@ -114,10 +143,12 @@ claudeInstruction: '画像プロンプトは、パレオアート調の油絵コ
 **(a) `JSON_OUTPUT_SCHEMA`に`styleId`パラメータ追加（L26）:**
 
 ```javascript
+import { OILPAINTING_STORY_REQUIREMENTS, GENERIC_IMAGE_PROMPT_REQUIREMENTS } from '../lib/image-prompt-requirements.js';
+
 const JSON_OUTPUT_SCHEMA = (today, styleId) => {
   const imagePromptInstruction = styleId === 'oilpainting'
-    ? 'この日記のストーリーの最も劇的・印象的な瞬間を、パレオアート油絵の1シーンとして英語で描写するプロンプト（AI画像生成用）。主人公の具体的な行動・感情、シーンの物語的意味（転換点・対立・発見）、構図（カメラアングル）、ライティング（色温度と感情の対応）、環境ディテール（地質・植生・天候）を必ず含めること。'
-    : 'この日記の中核エピソードを1つの具体的な場面として描写する英語プロンプト（AI画像生成用）。抽象的な比喩や概念図ではなく、読者が画像を見ただけで日記の内容がわかるような印象的なワンシーンを詳細に記述する。被写体の行動・表情・場所・時間帯・周辺のディテールを具体的に含めること。';
+    ? OILPAINTING_STORY_REQUIREMENTS
+    : GENERIC_IMAGE_PROMPT_REQUIREMENTS;
 
   return `以下のJSON形式で出力してください。...
   // 既存のテンプレートだが、image_promptフィールドの値を imagePromptInstruction に置換
@@ -155,21 +186,27 @@ let claudePrompt = buildPrompt(effectiveMode, rawText, today, ..., styleInstruct
 **変更箇所:** L265-276（composed配列）
 **リスク:** 中（全スタイルの画像生成に影響）
 
-**変更内容（Scene行を配列先頭に移動するだけ）:**
+**変更内容（関数冒頭で経路非依存の500文字クランプ + Scene行を配列先頭に移動）:**
 
 ```javascript
-// 変更前
-const composed = [
-  resolved.basePrompt,                                    // [1] キャラクター
-  resolved.eyeDescriptor ? `Eye detail ...` : null,       // [2] 目
-  `Scene: ${diaryImagePrompt}`,                           // [3] ストーリー ←ここ
-  style ? `Art style: ${style.promptPrefix}` : null,      // [4] スタイル
-  ...
-];
+// composeImagePrompt冒頭（character有無に関わらず適用）
+// [Codex archレビュー反復9 blocking対応] character === null経路も含む全経路で防御
+const IMAGE_PROMPT_HARD_LIMIT = 500;  // DALL-E 1000文字制限に対する経路非依存の防御
+const clampedScene = diaryImagePrompt.length > IMAGE_PROMPT_HARD_LIMIT
+  ? diaryImagePrompt.substring(0, IMAGE_PROMPT_HARD_LIMIT)
+  : diaryImagePrompt;
 
-// 変更後
+// character === null の早期return（L248-258）でも clampedScene を使用:
+if (!character) {
+  const result = {
+    prompt: style ? `${style.promptPrefix}. ${clampedScene}` : clampedScene,
+    ...
+  };
+}
+
+// character !== null の composed 配列:
 const composed = [
-  `Scene: ${diaryImagePrompt}`,                           // [1] ★ストーリー最優先
+  `Scene: ${clampedScene}`,                               // [1] ★ストーリー最優先（500文字クランプ済）
   resolved.basePrompt,                                    // [2] キャラクター
   resolved.eyeDescriptor ? `Eye detail ...` : null,       // [3] 目
   style ? `Art style: ${style.promptPrefix}` : null,      // [4] スタイル
@@ -183,7 +220,7 @@ const composed = [
 - **popillust:** ポップアートの強い視覚スタイルが維持される
 - **character=null:** L248-258の別パスを通るため**影響なし**
 
-**ロールバック:** Scene行を元の位置（basePrompt, eyeDescriptorの後）に戻すだけで完全復元可能
+**ロールバック:** Scene行を元の位置（basePrompt, eyeDescriptorの後）に戻し、`IMAGE_PROMPT_HARD_LIMIT`クランプを削除するだけで完全復元可能
 
 ---
 
@@ -436,9 +473,9 @@ it('Scene要素がArt style要素より前に来ること', () => {
 
 **(b) DALL-E 1000文字切り詰め時のスタイル残存テスト — 目的別2グループ（4件）:**
 
-> **[Codex archレビュー advisory対応 + 反復3/4 blocking対応]** テスト目的を分離する。
+> **[Codex archレビュー advisory対応 + 反復3/4/7 blocking対応]** テスト目的を分離する。
 > - **グループ1: 実運用境界（500文字Scene）** — `image_prompt`上限500文字での`Art style:`残存を保証。DALL-E 3に渡す先頭1000文字にスタイル識別語が含まれることを検証。
-> - **グループ2: 3800文字最悪条件** — Scene先頭化+3200文字Sceneでは先頭1000文字がScene内容で埋まるため、`Art style:`は切り落とされる。このときプロンプト全体（3800文字）には`Art style:`が含まれることを検証し、Gemini系バックエンド（制限なし）では問題ないことを確認。DALL-E 3フォールバック時は情報欠落が起きるが、実運用では`image_prompt`は500文字以内のためリスク許容。
+> - **グループ2: 500文字クランプ防御検証** — 500文字超のScene入力（800文字・3200文字）が`composeImagePrompt`内の`IMAGE_PROMPT_HARD_LIMIT`で500文字にクランプされ、DALL-E先頭1000文字にArt styleが残ることを検証。経路非依存（generate-image経由・手編集frontmatter経由）の安全性を保証。
 
 ```javascript
 // --- グループ1: 実運用境界（image_prompt上限500文字） ---
@@ -461,7 +498,7 @@ it('popillust: 500文字Sceneで先頭1000文字内にArt styleが残ること',
   expect(first1000).toContain('Dynamic pop-art');
 });
 
-// --- グループ2: 3800文字最悪条件（何が切り落とされるかの検証） ---
+// --- グループ2: 500文字クランプ防御の検証（経路非依存のDALL-E安全性保証） ---
 
 function createLongScene(targetLength) {
   const base = 'A dramatic survival scene in the ancient Cretaceous forest ';
@@ -471,27 +508,56 @@ function createLongScene(targetLength) {
   return scene.slice(0, targetLength);
 }
 
-it('3800文字最悪条件: 合成後プロンプト全体にArt styleが含まれること（Gemini用）', () => {
+it('800文字超過Scene: composeImagePromptが500文字にクランプし、DALL-E先頭1000文字にArt styleが残ること', () => {
   const character = createValidCharacter();
-  const longScene = createLongScene(3200);
-  const result = composeImagePrompt(longScene, character, 'oilpainting');
-  expect(result.prompt.length).toBeLessThanOrEqual(3800);
-  // Gemini系バックエンド（プライマリ）は制限なしのためプロンプト全体を使用
-  expect(result.prompt).toContain('Art style:');
-  expect(result.prompt).toContain('Acrylic paleoart');
-});
-
-it('3800文字最悪条件: 先頭1000文字はScene内容が支配し、Art styleは境界外に押し出されること', () => {
-  const character = createValidCharacter();
-  const longScene = createLongScene(3200);
+  const longScene = createLongScene(800);  // 500文字超の入力
   const result = composeImagePrompt(longScene, character, 'oilpainting');
   const first1000 = result.prompt.slice(0, 1000);
-  // Scene先頭化により、3200文字Sceneでは先頭1000文字がScene内容で埋まる
+  // [Codex archレビュー反復7 blocking対応] 経路非依存の500文字クランプにより
+  // DALL-E先頭1000文字にArt styleが残ることを保証
   expect(first1000).toContain('Scene:');
-  // [Codex archレビュー反復5 blocking対応] Art styleが1000文字境界外に押し出されることを明示検証
-  expect(first1000).not.toContain('Art style:');
-  // DALL-E 3フォールバック時はスタイル情報欠落だが、
-  // 実運用ではimage_prompt<=500文字のためこの条件には達しない
+  expect(first1000).toContain('Art style:');
+  expect(first1000).toContain('Acrylic paleoart');
+  // クランプされたSceneは500文字以内（Art style:位置で切り出し）
+  const sceneStart = result.prompt.indexOf('Scene: ') + 'Scene: '.length;
+  const artStyleStart = result.prompt.indexOf('. Art style:');
+  const sceneContent = result.prompt.substring(sceneStart, artStyleStart > sceneStart ? artStyleStart : undefined);
+  expect(sceneContent.length).toBeLessThanOrEqual(500);
+});
+
+it('3200文字超過Scene: クランプ後も合成プロンプト全体にArt styleが含まれること', () => {
+  const character = createValidCharacter();
+  const longScene = createLongScene(3200);  // 大幅超過の入力
+  const result = composeImagePrompt(longScene, character, 'oilpainting');
+  expect(result.prompt.length).toBeLessThanOrEqual(3800);
+  // クランプによりSceneは500文字に制限されるため、全バックエンドでArt styleが含まれる
+  expect(result.prompt).toContain('Art style:');
+  expect(result.prompt).toContain('Acrylic paleoart');
+  // DALL-E先頭1000文字にもArt styleが残る
+  const first1000 = result.prompt.slice(0, 1000);
+  expect(first1000).toContain('Art style:');
+});
+
+// --- グループ3: character=null経路のクランプ防御検証（2件） ---
+// [Codex archレビュー反復9 blocking対応] character===null経路でもクランプが適用されることを検証
+
+it('character=null + 800文字超過Scene: クランプされ先頭1000文字にスタイル識別語が残ること', () => {
+  const longScene = createLongScene(800);
+  const result = composeImagePrompt(longScene, null, 'oilpainting');
+  const first1000 = result.prompt.slice(0, 1000);
+  // character=null経路ではpromptPrefix + clampedSceneの合成
+  expect(first1000).toContain('Acrylic paleoart');
+  // クランプされたSceneは500文字以内
+  expect(result.prompt.length).toBeLessThan(800 + 500);  // promptPrefix + clamped < 合計
+});
+
+it('character=null + 3200文字超過Scene: クランプされプロンプト全体にスタイル識別語が残ること', () => {
+  const longScene = createLongScene(3200);
+  const result = composeImagePrompt(longScene, null, 'illustration');
+  expect(result.prompt).toContain('Flat illustration style');
+  // クランプによりpromptPrefixが切り落とされないことを検証
+  const first1000 = result.prompt.slice(0, 1000);
+  expect(first1000).toContain('Flat illustration style');
 });
 ```
 
@@ -501,6 +567,7 @@ it('3800文字最悪条件: 先頭1000文字はScene内容が支配し、Art sty
 
 | 順序 | ステップ | ファイル | リスク | 変更量 |
 |------|----------|---------|--------|--------|
+| 0 | Step 1-0: image_prompt要件文言の共通定数化 | `lib/image-prompt-requirements.js`（新規） | 低 | 新ファイル（定数2つ） |
 | 1 | Step 1-1: claudeInstruction強化 | `lib/image-styles.js` L16 | 低 | 文字列1箇所 |
 | 2 | Step 1-2: JSON_OUTPUT_SCHEMA分岐 + buildPrompt export | `api/create-diary.js` L26-37,39,59,91,127,449 | 低〜中 | 関数シグネチャ5箇所+分岐1箇所+export 2箇所 |
 | 3 | Step 3-1: スタイルテスト追加 | `tests/image-styles.test.js` | 低 | テスト1件 |
@@ -508,9 +575,9 @@ it('3800文字最悪条件: 先頭1000文字はScene内容が支配し、Art sty
 | 4b | Step 3-2b: buildPrompt統合テスト追加 | `tests/create-diary-schema.test.js`（新規） | 低 | テスト4件（3モード+illustration逆検証） |
 | 4c | Step 3-2c: handler経由統合テスト追加 | `tests/create-diary-schema.test.js`（新規） | 低 | テスト4件（handler→buildPrompt実運用経路検証） |
 | 5 | **`npm test` — Phase 1動作確認** | — | — | 全テスト通過確認 |
-| 6 | Step 2-1: composeImagePrompt順序変更 | `lib/character.js` L265-276 | 中 | 配列要素移動1箇所 |
+| 6 | Step 2-1: composeImagePrompt順序変更 + 500文字クランプ | `lib/character.js` L265-276 | 中 | 配列要素移動1箇所 + クランプ定数・ロジック追加 |
 | 7 | Step 3-3a: 順序検証テスト追加 | `tests/character.test.js` | 中 | テスト2件 |
-| 7b | Step 3-3b: DALL-E切り詰めスタイル残存テスト（実運用境界+最悪条件） | `tests/character.test.js` | 中 | テスト4件（実運用2件+最悪条件2件） |
+| 7b | Step 3-3b: DALL-E切り詰めスタイル残存テスト（実運用境界+クランプ防御+null経路） | `tests/character.test.js` | 中 | テスト6件（実運用境界2件+クランプ防御2件+character=null防御2件） |
 | 8 | **`npm test` — Phase 2動作確認** | — | — | 全テスト通過確認 |
 
 ---
@@ -522,6 +589,7 @@ it('3800文字最悪条件: 先頭1000文字はScene内容が支配し、Art sty
 | **全スタイルへの影響**（Step 2-1） | Scene配置変更が全スタイルのプロンプト構造を変える | 各スタイルで手動比較。`toContain`既存テストは順序非依存で壊れにくい |
 | **Claude出力品質変動**（Step 1-1/1-2） | 指示変更によりClaude出力が予期せず変化 | Phase 1完了後に手動テストで出力品質確認→Phase 2に進む |
 | **プロンプト長超過** | ストーリー詳細指示でimage_promptが長くなる | 既存ガード: `.slice(0, 3800)` + `PROMPT_WARN_THRESHOLD` 警告 |
+| **DALL-E 3スタイル欠落** | Scene先頭化でDALL-E 1000文字制限にArt styleが入らない | **経路非依存の二重防御:** (1) `create-diary.js:557-562`のサーバ側バリデーション（500文字切り詰め）、(2) `composeImagePrompt`内の`IMAGE_PROMPT_HARD_LIMIT=500`クランプ（generate-image経由・手編集frontmatter経由でも安全）。Step 3-3bグループ1+2のテストで先頭1000文字にArt style残存を保証 |
 | **JSON_OUTPUT_SCHEMAのexport** | named export追加によるVercel影響 | Vercelはdefault export `handler`のみ使用。不安なら統合テスト（案B）を採用 |
 
 ---
@@ -532,7 +600,7 @@ it('3800文字最悪条件: 先頭1000文字はScene内容が支配し、Art sty
 - [ ] JSON_OUTPUT_SCHEMAがoilpainting時にストーリー駆動のimage_prompt定義を使用する
 - [ ] composeImagePromptでScene要素がプロンプト先頭に配置される
 - [ ] 既存テスト全件パス
-- [ ] 追加テスト18件パス（スキーマ3件 + buildPrompt統合4件 + handler統合4件 + 順序2件 + DALL-E境界4件 + claudeInstruction1件）
+- [ ] 追加テスト21件パス（定数一貫性1件 + スキーマ3件 + buildPrompt統合4件 + handler統合4件 + 順序2件 + DALL-E境界6件 + claudeInstruction1件）
 - [ ] 手動テスト: oilpaintingで生成したimage_promptにストーリー要素が明確に含まれる
 - [ ] 手動テスト: illustration/popillustの画像品質に退行がない
 
@@ -544,6 +612,23 @@ it('3800文字最悪条件: 先頭1000文字はScene内容が支配し、Art sty
 修正後のシステムがこれと同等品質のimage_promptを自動生成できるか比較検証すること。
 
 ---
+
+---
+
+## Codexレビュー履歴（再レビュー）
+
+| 反復 | 結果 | 指摘 | 対応 |
+|------|------|------|------|
+| 6（再レビュー1） | `ok: false` | **blocking:** DALL-E 3フォールバック時のスタイル欠落リスク（image_prompt 500文字ハード制御の存在が計画書に明記されていない） | ExecPlanのプロンプト長制約表・リスク評価に`create-diary.js:557-562`のサーバ側ハードバリデーションを明記 |
+| | advisory | claudeInstructionとJSON_OUTPUT_SCHEMAの文言重複 | 意図的設計（役割が異なる: スタイル指示 vs フィールド定義）。将来的に共通定数化を検討（ExecPlan範囲外） |
+| | advisory | handler経由テストが成功系中心、異常系不足 | 今回の変更スコープ外。将来タスクとして記録 |
+| 7（再レビュー2） | `ok: false` | **blocking 1:** `composeImagePrompt`はgenerate-image経路でも呼ばれるため、`create-diary.js`のバリデーションに依存した防御では不十分。既存日記・手編集frontmatter経由で500文字超のimage_promptが入る可能性 | Step 2-1に**経路非依存の防御**追加: `composeImagePrompt`内で`IMAGE_PROMPT_HARD_LIMIT=500`定数によるクランプを実装。二重防御（create-diary側 + compose側）で全呼び出し経路を保護 |
+| | blocking 2 | Step 3-3bグループ2のテストが「Art style欠落の確認」になっており、DALL-E安全性の保証テストになっていない | グループ2をクランプ防御検証テストに変更: 800文字・3200文字超過Scene入力時にクランプされ、先頭1000文字にArt styleが残ることを確認 |
+| | advisory | claudeInstruction/JSON_OUTPUT_SCHEMAの要件文言が共通定数化されていない | ExecPlan範囲外。将来タスクとして引き続き記録 |
+| 8（再レビュー3） | `ok: false` | **blocking:** claudeInstruction/JSON_OUTPUT_SCHEMAの要件文言の共通定数化が未計画。前回メモの必須確認項目(3)が未充足 | Step 1-0追加: `lib/image-prompt-requirements.js`に`OILPAINTING_STORY_REQUIREMENTS`/`GENERIC_IMAGE_PROMPT_REQUIREMENTS`を定義、`JSON_OUTPUT_SCHEMA`から直接参照。定数一貫性テスト1件追加（計19件） |
+| | advisory | Step 3-3bの正規表現`/Scene: (.*?)\\./ `がScene本文中のピリオドで早期一致 | `Art style:`位置での切り出しに変更し、正規表現依存を排除 |
+| 9（再レビュー4） | `ok: false` | **blocking:** `character === null`の早期return経路（L247-259）に500文字クランプが未適用。ExecPlanの「経路非依存」保証と実装が不整合 | クランプを`composeImagePrompt`冒頭（character有無チェック前）に移動。character=null経路でも`clampedScene`を使用する設計に修正。character=null防御テスト2件追加（計21件） |
+| | advisory | `claudeInstruction`がフレーズコピーのままでドリフト余地あり | `claudeInstruction`も定数参照ベースに寄せる方針に更新 |
 
 *元計画書: plans/story-driven-paleoart.md*
 *作成: 2026-03-30*
