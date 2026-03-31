@@ -1,8 +1,8 @@
 # Handoff: パレオアートモード ストーリー反映改善
 
 > **作成日:** 2026-03-30
-> **更新日:** 2026-03-30 18:00
-> **状態:** ExecPlan再レビュー中（codex-review 反復9/max5完了、反復10未実施） → レビュー継続 → 実装待ち
+> **更新日:** 2026-03-31
+> **状態:** ExecPlanレビュー完了（反復12で ok: true） → Phase 1実装（セッションA） → Phase 2実装（セッションB）
 
 ---
 
@@ -16,29 +16,28 @@
 - [x] 対象ファイル調査（image-styles.js, character.js, create-diary.js, image-backend.js）
 - [x] ExecPlan作成（`plans/story-driven-paleoart-exec.md`）
 - [x] 方針C（新スタイル追加）不採用の判断
-- [x] テスト計画策定（21件追加予定）
+- [x] テスト計画策定（27件追加予定）
 - [x] Codex archレビュー 反復1-5（初回レビュー完了）
-- [x] Codex archレビュー 反復6（再レビュー1）: blocking 1件（DALL-E安全性の明記不足）→ 修正済み
-- [x] Codex archレビュー 反復7（再レビュー2）: blocking 2件（経路非依存防御 + テスト設計矛盾）→ 修正済み
-- [x] Codex archレビュー 反復8（再レビュー3）: blocking 1件（共通定数化の未計画）→ 修正済み
-- [x] Codex archレビュー 反復9（再レビュー4）: blocking 1件（character=null経路のクランプ漏れ）→ 修正済み
+- [x] Codex archレビュー 反復6-9（再レビュー1-4）: 各blocking修正済み
+- [x] Codex archレビュー 反復10: blocking 1件（非文字列TypeErrorリスク）→ 修正済み
+- [x] Codex archレビュー 反復11: blocking 1件（Art style:のDALL-E押出し）→ 修正済み
+- [x] Codex archレビュー 反復12: **ok: true** ✅ ExecPlanレビュー完了
 
 ## 次セッションのアクション
 
-### 0. ExecPlanレビュー継続（反復10〜）
+### 0. ExecPlanレビュー — ✅ 完了
 
-反復9のblocking修正は完了済みだが、Codex再レビュー（反復10）が未実施。
+反復12で `ok: true` 達成。ExecPlanレビューは完了済み。実装に着手可能。
 
-```
-codex-review plans/story-driven-paleoart-exec.md
-```
+### 1. 実装（ExecPlan準拠）
 
-前回メモ:
-> 次回は (1) composeImagePromptの500文字クランプがcharacter有無の全経路で適用されること、(2) tests/character.test.jsにcharacter=nullを含む超過入力テストが追加されていること、(3) 共通定数化の実体がphrase-level copyではなく参照ベースになっていること、を確認対象に含める。
+> **⚠️ セッション分割方針（2026-03-31決定）**
+> コンテキスト圧迫防止のため、Phase 1 と Phase 2 は**別セッション**で実施する。
+> 各Phaseの完了時にコミット＆プッシュし、次セッションへ引き継ぐ。
 
-→ **3点とも対応済み**のため、ok: trueになる見込み。ならない場合は修正→再レビュー反復。
+---
 
-### 1. 実装（ExecPlan準拠）— レビュー完了後
+#### セッションA: Phase 1 実装 + codex-review
 
 **Phase 1: Claude指示の強化（リスク: 低）**
 0. `lib/image-prompt-requirements.js`（新規）— 共通定数`OILPAINTING_STORY_REQUIREMENTS`/`GENERIC_IMAGE_PROMPT_REQUIREMENTS`
@@ -49,17 +48,46 @@ codex-review plans/story-driven-paleoart-exec.md
 5. `tests/image-styles.test.js` — claudeInstruction検証テスト1件追加
 6. `tests/create-diary-schema.test.js`（新規）— 定数一貫性1件 + スキーマ単体3件 + buildPrompt統合4件 + handler統合4件
 7. `npm test` で全テスト通過確認
+8. `codex-review` で ok: true まで反復
+9. コミット＆プッシュ
+
+**セッションA完了後の引き継ぎプロンプト:**
+```
+cd diary
+
+パレオアートモード ストーリー反映改善 — Phase 2 実装セッション
+
+## 現状
+Phase 1（Claude指示の強化）は実装・テスト・codex-review完了済み、コミット済み。
+Phase 2（プロンプト合成の優先順位変更）が未実施。
+
+## 作業順序
+1. `HANDOFF_PALEOART.md` を読む
+2. `plans/story-driven-paleoart-exec.md` の Phase 2 セクション（Step 2-1, Step 3-3）を読む
+3. Phase 2 実装 → npm test → codex-review（ok: trueまで）
+4. コミット＆プッシュ
+
+## 必読ファイル
+1. `HANDOFF_PALEOART.md` — 引き継ぎ概要・セッション分割方針
+2. `plans/story-driven-paleoart-exec.md` — ExecPlan（Phase 2: Step 2-1, Step 3-3）
+```
+
+---
+
+#### セッションB: Phase 2 実装 + codex-review
 
 **Phase 2: プロンプト合成の優先順位変更（リスク: 中）**
-8. `lib/character.js:244` — composeImagePrompt冒頭に`IMAGE_PROMPT_HARD_LIMIT=500`クランプ追加（character有無に関わらず適用）
-9. `lib/character.js:265-276` — composed配列のScene要素を先頭に移動（clampedScene使用）
-10. `tests/character.test.js` — 順序検証2件 + DALL-E境界6件（実運用2件+クランプ防御2件+null経路2件）追加
-11. `npm test` で全テスト通過確認
+0. `lib/character.js:244` — composeImagePrompt冒頭に非文字列正規化 + `IMAGE_PROMPT_HARD_LIMIT=500`クランプ追加（character有無に関わらず適用）
+1. `lib/character.js:265-276` — composed配列を Scene→Art style→basePrompt→eyeDescriptor 順に変更（clampedScene使用）
+2. `tests/character.test.js` — 順序検証3件 + DALL-E境界6件 + worst-case1件 + 非文字列正規化4件 追加
+3. `npm test` で全テスト通過確認
+4. `codex-review` で ok: true まで反復
+5. コミット＆プッシュ
 
 ### 2. 各Phase完了後にcodex-review
 
 各Phase完了時に`codex-review`スキルを実行し、ok: trueまで反復。
-全Phase完了後、コミット＆プッシュ。
+**Phase 1 と Phase 2 は別セッションで実施**（コンテキスト圧迫防止）。
 
 ## 必読ファイル
 
@@ -98,7 +126,9 @@ codex-review plans/story-driven-paleoart-exec.md
 | 7 | `ok: false` | generate-image経路での防御不足 + テスト設計矛盾 | Step 2-1に`IMAGE_PROMPT_HARD_LIMIT=500`クランプ追加、テストをクランプ防御検証に変更 |
 | 8 | `ok: false` | claudeInstruction/JSON_OUTPUT_SCHEMAの共通定数化未計画 | Step 1-0追加: `lib/image-prompt-requirements.js`に共通定数、テスト1件追加（計19→21件） |
 | 9 | `ok: false` | character=null経路のクランプ漏れ | クランプを関数冒頭に移動、character=null防御テスト2件追加（計21件） |
-| 10 | **未実施** | — | 反復9のblocking修正済み、再レビュー待ち |
+| 10 | `ok: false` | diaryImagePrompt非文字列時のTypeError | クランプ前に文字列正規化追加、非文字列テスト4件追加（計25件） |
+| 11 | `ok: false` | Art style:がbasePrompt後段でDALL-E先頭1000文字外に押し出される | Art style:をcharacter要素の前に移動、worst-caseテスト追加（計27件） |
+| 12 | `ok: true` ✅ | — | blocking 0件。ExecPlanレビュー完了 |
 
 ## 注意事項
 
@@ -107,8 +137,8 @@ codex-review plans/story-driven-paleoart-exec.md
 - DALL-E 3は1000文字ハード制限あり（`image-backend.js:110-112`）
 - 既存テスト168件が全てパスすることを必ず確認
 - テストの`character.imageGeneration.basePrompt`（`imgGen`ではない）に注意
-- ExecPlanの再レビュー（反復10）を最初に実施し、ok: trueを確認してから実装に着手
+- ExecPlanレビューは反復12で完了済み（ok: true）。実装に直接着手可能
 
 ---
 
-*次セッションは反復10のcodex-reviewから開始し、その後 `plans/story-driven-paleoart-exec.md` に従って実装*
+*次セッションはセッションA（Phase 1実装）から開始*
