@@ -2,7 +2,7 @@
 
 > **作成日:** 2026-03-30
 > **更新日:** 2026-03-31
-> **状態:** Phase 1 codex-review進行中（arch ok:true, diff反復3/5 — blocking1件残） → Phase 2実装（セッションC）
+> **状態:** Phase 1 codex-review完了（arch ok:true, diff ok:true 反復3） → Phase 2実装（セッションC）
 
 ---
 
@@ -41,22 +41,16 @@
   - blocking: handlerレベルのstyleIdネガティブテスト不足
     - `tests/create-diary-schema.test.js` にhandlerネガティブテスト3件追加（null/undefined/invalid → 400）
   - 全449テストパス確認
-- [ ] **Phase 1 codex-review: diff反復3**（未実施）
+- [x] **Phase 1 codex-review: diff反復3 ok: true** ✅
+  - blocking 0件、advisory 1件（getStyleImagePromptRequirementの直接テスト追加推奨）
+  - advisory対応: tests/image-styles.test.jsにgetStyleImagePromptRequirementテスト5件追加
+  - 全454テストパス確認
 
 ## 次セッションのアクション
 
-### 1. Phase 1 codex-review 続行（diff反復3から）
+### 1. Phase 2 実装
 
-diff反復2までの修正はすべて完了・テスト全パス済み。
-反復3の再レビューを実行し、ok: trueまで反復すること。
-
-**前回のnotes_for_next_review:** "Re-run gate after adding explicit handler test for styleId: null (400). Centralized metadata usage and 3x3 style×mode matrix are otherwise verified."
-
-修正済みだが未確認の状態。反復3で確認が必要。
-
-### 2. Phase 2 実装（別セッション推奨）
-
-Phase 1のcodex-review完了・コミット後、Phase 2を実施。
+Phase 1のcodex-review完了済み。Phase 2を実施。
 
 **Phase 2: プロンプト合成の優先順位変更（リスク: 中）**
 0. `lib/character.js:244` — composeImagePrompt冒頭に非文字列正規化 + `IMAGE_PROMPT_HARD_LIMIT=500`クランプ追加（character有無に関わらず適用）

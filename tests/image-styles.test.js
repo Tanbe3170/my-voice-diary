@@ -11,7 +11,9 @@ import {
   getStyleNegativePrompt,
   getStyleClaudeInstruction,
   getStyleConflicts,
+  getStyleImagePromptRequirement,
 } from '../lib/image-styles.js';
+import { OILPAINTING_STORY_REQUIREMENTS, GENERIC_IMAGE_PROMPT_REQUIREMENTS } from '../lib/image-prompt-requirements.js';
 
 describe('IMAGE_STYLES定義', () => {
   it('illustrationスタイルが定義されていること', () => {
@@ -208,5 +210,27 @@ describe('getStyleConflicts', () => {
 
   it('未知のstyleIdで空配列を返すこと', () => {
     expect(getStyleConflicts('unknown')).toEqual([]);
+  });
+});
+
+describe('getStyleImagePromptRequirement', () => {
+  it('oilpaintingでストーリー駆動の専用要件を返すこと', () => {
+    expect(getStyleImagePromptRequirement('oilpainting')).toBe(OILPAINTING_STORY_REQUIREMENTS);
+  });
+
+  it('illustrationで汎用要件を返すこと', () => {
+    expect(getStyleImagePromptRequirement('illustration')).toBe(GENERIC_IMAGE_PROMPT_REQUIREMENTS);
+  });
+
+  it('popillustで汎用要件を返すこと', () => {
+    expect(getStyleImagePromptRequirement('popillust')).toBe(GENERIC_IMAGE_PROMPT_REQUIREMENTS);
+  });
+
+  it('未知のstyleIdで汎用要件にフォールバックすること', () => {
+    expect(getStyleImagePromptRequirement('unknown')).toBe(GENERIC_IMAGE_PROMPT_REQUIREMENTS);
+  });
+
+  it('nullで汎用要件にフォールバックすること', () => {
+    expect(getStyleImagePromptRequirement(null)).toBe(GENERIC_IMAGE_PROMPT_REQUIREMENTS);
   });
 });
