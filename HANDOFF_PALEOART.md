@@ -108,4 +108,4 @@ Phase 1のcodex-review完了済み。Phase 2を実施。
 
 ---
 
-*次セッションはPhase 1 codex-reviewから開始*
+*次セッションはPhase 2実装から開始*
