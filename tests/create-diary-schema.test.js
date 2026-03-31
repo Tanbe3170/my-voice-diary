@@ -72,6 +72,40 @@ describe('buildPrompt - styleId伝播によるimage_prompt指示分岐', () => {
     expect(prompt).toContain('中核エピソード');
     expect(prompt).not.toContain('物語的意味');
   });
+
+  it('dino-storyモード + illustration: 従来の汎用指示が使用される', () => {
+    const dinoContext = { era: 'cretaceous' };
+    const prompt = buildPrompt('dino-story', rawText, today, dinoContext, '画風指示', 'illustration');
+    expect(prompt).toContain('中核エピソード');
+    expect(prompt).not.toContain('物語的意味');
+  });
+
+  it('dino-researchモード + illustration: 従来の汎用指示が使用される', () => {
+    const dinoContext = { topic: '恐竜の巣作り行動', sources: [] };
+    const prompt = buildPrompt('dino-research', rawText, today, dinoContext, '画風指示', 'illustration');
+    expect(prompt).toContain('中核エピソード');
+    expect(prompt).not.toContain('物語的意味');
+  });
+
+  it('normalモード + popillust: 従来の汎用指示が使用される', () => {
+    const prompt = buildPrompt('normal', rawText, today, null, '画風指示', 'popillust');
+    expect(prompt).toContain('中核エピソード');
+    expect(prompt).not.toContain('物語的意味');
+  });
+
+  it('dino-storyモード + popillust: 従来の汎用指示が使用される', () => {
+    const dinoContext = { era: 'cretaceous' };
+    const prompt = buildPrompt('dino-story', rawText, today, dinoContext, '画風指示', 'popillust');
+    expect(prompt).toContain('中核エピソード');
+    expect(prompt).not.toContain('物語的意味');
+  });
+
+  it('dino-researchモード + popillust: 従来の汎用指示が使用される', () => {
+    const dinoContext = { topic: '恐竜の巣作り行動', sources: [] };
+    const prompt = buildPrompt('dino-research', rawText, today, dinoContext, '画風指示', 'popillust');
+    expect(prompt).toContain('中核エピソード');
+    expect(prompt).not.toContain('物語的意味');
+  });
 });
 
 // ===================================================================
@@ -197,6 +231,27 @@ describe('handler経由 styleId伝播テスト', () => {
     expect(res._status).toBe(200);
     expect(lastClaudePrompt).toContain('中核エピソード');
     expect(lastClaudePrompt).not.toContain('物語的意味');
+  });
+
+  it('handler経由: styleId=nullで400エラー', async () => {
+    setupFetchMock();
+    const res = createRes();
+    await handler(createReq('normal', null), res);
+    expect(res._status).toBe(400);
+  });
+
+  it('handler経由: styleId=undefinedで400エラー', async () => {
+    setupFetchMock();
+    const res = createRes();
+    await handler(createReq('normal', undefined), res);
+    expect(res._status).toBe(400);
+  });
+
+  it('handler経由: styleId=invalid-stringで400エラー', async () => {
+    setupFetchMock();
+    const res = createRes();
+    await handler(createReq('normal', 'nonexistent-style'), res);
+    expect(res._status).toBe(400);
   });
 });
 

@@ -2,7 +2,7 @@
 
 > **作成日:** 2026-03-30
 > **更新日:** 2026-03-31
-> **状態:** Phase 1実装完了（テスト全441件パス） → Phase 1 codex-review未実施 → Phase 2実装（セッションB）
+> **状態:** Phase 1 codex-review進行中（arch ok:true, diff反復3/5 — blocking1件残） → Phase 2実装（セッションC）
 
 ---
 
@@ -29,15 +29,30 @@
   - `tests/image-styles.test.js` claudeInstruction検証テスト1件追加
   - `tests/create-diary-schema.test.js` 新規作成（13件: 定数一貫性1+スキーマ3+buildPrompt統合4+handler統合4+定数内容検証1）
   - 全441テストパス確認
+- [x] **Phase 1 codex-review: archレビュー ok: true**（blocking 0件、advisory 2件）
+- [x] **Phase 1 codex-review: diff反復1 ok: false** → blocking 2件修正済み
+  - blocking 1: `styleId === 'oilpainting'`ハードコードをスタイルメタデータに集約
+    - `lib/image-styles.js` に`imagePromptRequirement`プロパティ追加（各スタイル定義に）
+    - `lib/image-styles.js` に`getStyleImagePromptRequirement(styleId)`ゲッター追加
+    - `api/create-diary.js` から直接import除去、ゲッター使用に変更
+  - blocking 2: styleId×modeテストマトリクス完成（3×3: illustration/oilpainting/popillust × normal/dino-story/dino-research）
+    - `tests/create-diary-schema.test.js` にbuildPromptテスト5件追加
+- [x] **Phase 1 codex-review: diff反復2 ok: false** → blocking 1件修正済み
+  - blocking: handlerレベルのstyleIdネガティブテスト不足
+    - `tests/create-diary-schema.test.js` にhandlerネガティブテスト3件追加（null/undefined/invalid → 400）
+  - 全449テストパス確認
+- [ ] **Phase 1 codex-review: diff反復3**（未実施）
 
 ## 次セッションのアクション
 
-### 1. Phase 1 codex-review（未実施）
+### 1. Phase 1 codex-review 続行（diff反復3から）
 
-Phase 1の実装は完了・テスト全パス済みだが、codex-reviewが未実施。
-次セッションでまずcodex-reviewを実行し、ok: trueまで反復すること。
+diff反復2までの修正はすべて完了・テスト全パス済み。
+反復3の再レビューを実行し、ok: trueまで反復すること。
 
-**規模判定:** medium（6ファイル変更、約271行）→ arch → diff
+**前回のnotes_for_next_review:** "Re-run gate after adding explicit handler test for styleId: null (400). Centralized metadata usage and 3x3 style×mode matrix are otherwise verified."
+
+修正済みだが未確認の状態。反復3で確認が必要。
 
 ### 2. Phase 2 実装（別セッション推奨）
 

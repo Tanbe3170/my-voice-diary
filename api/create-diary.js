@@ -2,9 +2,8 @@ import { isIP } from 'net';
 import { handleCors } from '../lib/cors.js';
 import { verifyJwt } from '../lib/jwt.js';
 import { loadCharacter, injectCharacterPrompt } from '../lib/character.js';
-import { isValidStyleId, getStyleClaudeInstruction } from '../lib/image-styles.js';
+import { isValidStyleId, getStyleClaudeInstruction, getStyleImagePromptRequirement } from '../lib/image-styles.js';
 import { generateImageToken } from '../lib/image-token.js';
-import { OILPAINTING_STORY_REQUIREMENTS, GENERIC_IMAGE_PROMPT_REQUIREMENTS } from '../lib/image-prompt-requirements.js';
 
 // api/create-diary.js
 // Vercel Serverless Function - 日記作成API
@@ -25,9 +24,7 @@ import { OILPAINTING_STORY_REQUIREMENTS, GENERIC_IMAGE_PROMPT_REQUIREMENTS } fro
 // ===================================================================
 
 export const JSON_OUTPUT_SCHEMA = (today, styleId) => {
-  const imagePromptInstruction = styleId === 'oilpainting'
-    ? OILPAINTING_STORY_REQUIREMENTS
-    : GENERIC_IMAGE_PROMPT_REQUIREMENTS;
+  const imagePromptInstruction = getStyleImagePromptRequirement(styleId);
 
   return `以下のJSON形式で出力してください。JSONの前後に説明文は不要です。
 
