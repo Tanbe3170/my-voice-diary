@@ -2,7 +2,7 @@
 
 > **作成日:** 2026-03-30
 > **更新日:** 2026-03-31
-> **状態:** ExecPlanレビュー完了（反復12で ok: true） → Phase 1実装（セッションA） → Phase 2実装（セッションB）
+> **状態:** Phase 1実装完了（テスト全441件パス） → Phase 1 codex-review未実施 → Phase 2実装（セッションB）
 
 ---
 
@@ -22,59 +22,26 @@
 - [x] Codex archレビュー 反復10: blocking 1件（非文字列TypeErrorリスク）→ 修正済み
 - [x] Codex archレビュー 反復11: blocking 1件（Art style:のDALL-E押出し）→ 修正済み
 - [x] Codex archレビュー 反復12: **ok: true** ✅ ExecPlanレビュー完了
+- [x] **Phase 1実装完了**（セッションA: 2026-03-31）
+  - `lib/image-prompt-requirements.js` 新規作成（共通定数 OILPAINTING_STORY_REQUIREMENTS / GENERIC_IMAGE_PROMPT_REQUIREMENTS）
+  - `lib/image-styles.js` oilpainting.claudeInstruction強化（【必須要素】5項目追加）
+  - `api/create-diary.js` JSON_OUTPUT_SCHEMA/buildPrompt にstyleId引数追加・export化
+  - `tests/image-styles.test.js` claudeInstruction検証テスト1件追加
+  - `tests/create-diary-schema.test.js` 新規作成（13件: 定数一貫性1+スキーマ3+buildPrompt統合4+handler統合4+定数内容検証1）
+  - 全441テストパス確認
 
 ## 次セッションのアクション
 
-### 0. ExecPlanレビュー — ✅ 完了
+### 1. Phase 1 codex-review（未実施）
 
-反復12で `ok: true` 達成。ExecPlanレビューは完了済み。実装に着手可能。
+Phase 1の実装は完了・テスト全パス済みだが、codex-reviewが未実施。
+次セッションでまずcodex-reviewを実行し、ok: trueまで反復すること。
 
-### 1. 実装（ExecPlan準拠）
+**規模判定:** medium（6ファイル変更、約271行）→ arch → diff
 
-> **⚠️ セッション分割方針（2026-03-31決定）**
-> コンテキスト圧迫防止のため、Phase 1 と Phase 2 は**別セッション**で実施する。
-> 各Phaseの完了時にコミット＆プッシュし、次セッションへ引き継ぐ。
+### 2. Phase 2 実装（別セッション推奨）
 
----
-
-#### セッションA: Phase 1 実装 + codex-review
-
-**Phase 1: Claude指示の強化（リスク: 低）**
-0. `lib/image-prompt-requirements.js`（新規）— 共通定数`OILPAINTING_STORY_REQUIREMENTS`/`GENERIC_IMAGE_PROMPT_REQUIREMENTS`
-1. `lib/image-styles.js:16` — oilpainting.claudeInstructionに定数参照ベースでストーリー駆動【必須要素】5項目を追加
-2. `api/create-diary.js:26-37` — JSON_OUTPUT_SCHEMAに`styleId`引数追加、共通定数から直接参照 + `export`化
-3. `api/create-diary.js:127` — `buildPrompt`を`export function`化、styleIdを引数追加・各build関数に伝播
-4. `api/create-diary.js:449` — buildPrompt呼び出しにstyleId引数追加
-5. `tests/image-styles.test.js` — claudeInstruction検証テスト1件追加
-6. `tests/create-diary-schema.test.js`（新規）— 定数一貫性1件 + スキーマ単体3件 + buildPrompt統合4件 + handler統合4件
-7. `npm test` で全テスト通過確認
-8. `codex-review` で ok: true まで反復
-9. コミット＆プッシュ
-
-**セッションA完了後の引き継ぎプロンプト:**
-```
-cd diary
-
-パレオアートモード ストーリー反映改善 — Phase 2 実装セッション
-
-## 現状
-Phase 1（Claude指示の強化）は実装・テスト・codex-review完了済み、コミット済み。
-Phase 2（プロンプト合成の優先順位変更）が未実施。
-
-## 作業順序
-1. `HANDOFF_PALEOART.md` を読む
-2. `plans/story-driven-paleoart-exec.md` の Phase 2 セクション（Step 2-1, Step 3-3）を読む
-3. Phase 2 実装 → npm test → codex-review（ok: trueまで）
-4. コミット＆プッシュ
-
-## 必読ファイル
-1. `HANDOFF_PALEOART.md` — 引き継ぎ概要・セッション分割方針
-2. `plans/story-driven-paleoart-exec.md` — ExecPlan（Phase 2: Step 2-1, Step 3-3）
-```
-
----
-
-#### セッションB: Phase 2 実装 + codex-review
+Phase 1のcodex-review完了・コミット後、Phase 2を実施。
 
 **Phase 2: プロンプト合成の優先順位変更（リスク: 中）**
 0. `lib/character.js:244` — composeImagePrompt冒頭に非文字列正規化 + `IMAGE_PROMPT_HARD_LIMIT=500`クランプ追加（character有無に関わらず適用）
@@ -83,11 +50,6 @@ Phase 2（プロンプト合成の優先順位変更）が未実施。
 3. `npm test` で全テスト通過確認
 4. `codex-review` で ok: true まで反復
 5. コミット＆プッシュ
-
-### 2. 各Phase完了後にcodex-review
-
-各Phase完了時に`codex-review`スキルを実行し、ok: trueまで反復。
-**Phase 1 と Phase 2 は別セッションで実施**（コンテキスト圧迫防止）。
 
 ## 必読ファイル
 
@@ -99,46 +61,42 @@ Phase 2（プロンプト合成の優先順位変更）が未実施。
 
 ## 変更対象ファイル
 
-| ファイル | 変更内容 | 既存テスト |
-|---------|---------|-----------|
-| `lib/image-prompt-requirements.js` | **新規** 共通定数（oilpainting/汎用） | — |
-| `lib/image-styles.js` | oilpainting.claudeInstruction書き換え（定数参照） | 32テスト（image-styles.test.js） |
-| `api/create-diary.js` | JSON_OUTPUT_SCHEMA分岐（定数参照） + build関数シグネチャ + export化 | 12テスト（create-diary-ratelimit.test.js） |
-| `lib/character.js` | composeImagePrompt冒頭クランプ + 配列順序変更 | 44テスト（character.test.js） |
+| ファイル | 変更内容 | 状態 |
+|---------|---------|------|
+| `lib/image-prompt-requirements.js` | 共通定数（oilpainting/汎用） | ✅ Phase 1完了 |
+| `lib/image-styles.js` | oilpainting.claudeInstruction強化 | ✅ Phase 1完了 |
+| `api/create-diary.js` | JSON_OUTPUT_SCHEMA分岐 + build関数シグネチャ + export化 | ✅ Phase 1完了 |
+| `tests/image-styles.test.js` | claudeInstruction検証テスト1件追加 | ✅ Phase 1完了 |
+| `tests/create-diary-schema.test.js` | スキーマ・buildPrompt・handler統合テスト13件 | ✅ Phase 1完了 |
+| `lib/character.js` | composeImagePrompt冒頭クランプ + 配列順序変更 | 📋 Phase 2 |
+| `tests/character.test.js` | 順序検証・DALL-E境界・非文字列テスト14件 | 📋 Phase 2 |
 
 ## Codexレビュー修正履歴
 
-### 初回レビュー（反復1-5）
+### ExecPlanレビュー（反復1-12）
 
 | 反復 | 結果 | blocking | 修正内容 |
 |------|------|----------|---------|
 | 1 | `ok: false` | styleId伝播テスト不足 | Step 3-2bにbuildPrompt統合テスト追加、buildPrompt export化方針明記 |
 | 2 | `ok: false` | dino-research経路未検証 | dino-research+oilpaintingテスト追加、DALL-E境界条件データ、fixture名修正 |
 | 3 | `ok: false` | handler経由テスト不足 + DALL-E境界不足 | Step 3-2cにAPIハンドラ統合テスト4件追加、3800文字最悪条件テスト強化 |
-| 4 | `ok: false` | CLAUDE_API_KEY漏れ + テスト自己矛盾 | 環境変数追加、テスト目的分離（実運用500文字境界+3800文字最悪条件） |
+| 4 | `ok: false` | CLAUDE_API_KEY漏れ + テスト自己矛盾 | 環境変数追加、テスト目的分離 |
 | 5 | `ok: false` | 最悪条件テストのアサート不足 | `not.toContain('Art style:')`追加 |
-
-### 再レビュー（反復6-9）
-
-| 反復 | 結果 | blocking | 修正内容 |
-|------|------|----------|---------|
-| 6 | `ok: false` | DALL-Eスタイル欠落リスク（ハード制御の明記不足） | プロンプト長制約表・リスク評価に`create-diary.js:557-562`のバリデーション明記 |
-| 7 | `ok: false` | generate-image経路での防御不足 + テスト設計矛盾 | Step 2-1に`IMAGE_PROMPT_HARD_LIMIT=500`クランプ追加、テストをクランプ防御検証に変更 |
-| 8 | `ok: false` | claudeInstruction/JSON_OUTPUT_SCHEMAの共通定数化未計画 | Step 1-0追加: `lib/image-prompt-requirements.js`に共通定数、テスト1件追加（計19→21件） |
-| 9 | `ok: false` | character=null経路のクランプ漏れ | クランプを関数冒頭に移動、character=null防御テスト2件追加（計21件） |
-| 10 | `ok: false` | diaryImagePrompt非文字列時のTypeError | クランプ前に文字列正規化追加、非文字列テスト4件追加（計25件） |
-| 11 | `ok: false` | Art style:がbasePrompt後段でDALL-E先頭1000文字外に押し出される | Art style:をcharacter要素の前に移動、worst-caseテスト追加（計27件） |
-| 12 | `ok: true` ✅ | — | blocking 0件。ExecPlanレビュー完了 |
+| 6 | `ok: false` | DALL-Eスタイル欠落リスク | プロンプト長制約表にバリデーション明記 |
+| 7 | `ok: false` | generate-image経路での防御不足 | `IMAGE_PROMPT_HARD_LIMIT=500`クランプ追加 |
+| 8 | `ok: false` | 共通定数化未計画 | Step 1-0追加: `lib/image-prompt-requirements.js` |
+| 9 | `ok: false` | character=null経路のクランプ漏れ | クランプを関数冒頭に移動 |
+| 10 | `ok: false` | 非文字列TypeError | クランプ前に文字列正規化追加 |
+| 11 | `ok: false` | Art style:のDALL-E押出し | Art style:をcharacter要素の前に移動 |
+| 12 | `ok: true` ✅ | — | ExecPlanレビュー完了 |
 
 ## 注意事項
 
 - `JSON_OUTPUT_SCHEMA`と`buildPrompt`を`export`にする場合、Vercelのdefault export `handler`には影響しない
 - composeImagePromptの順序変更は**全スタイル**に影響する（illustration, popillustも）
 - DALL-E 3は1000文字ハード制限あり（`image-backend.js:110-112`）
-- 既存テスト168件が全てパスすることを必ず確認
 - テストの`character.imageGeneration.basePrompt`（`imgGen`ではない）に注意
-- ExecPlanレビューは反復12で完了済み（ok: true）。実装に直接着手可能
 
 ---
 
-*次セッションはセッションA（Phase 1実装）から開始*
+*次セッションはPhase 1 codex-reviewから開始*

@@ -181,6 +181,16 @@ describe('getStyleClaudeInstruction', () => {
   it('未知のstyleIdでnullを返すこと', () => {
     expect(getStyleClaudeInstruction('unknown')).toBeNull();
   });
+
+  it('oilpaintingのclaudeInstructionにストーリー駆動の【必須要素】が含まれること', () => {
+    const inst = getStyleClaudeInstruction('oilpainting');
+    expect(inst).toContain('【必須要素】');
+    expect(inst).toContain('行動と感情');
+    expect(inst).toContain('物語的意味');
+    expect(inst).toContain('構図');
+    expect(inst).toContain('ライティング');
+    expect(inst).toContain('環境ストーリーテリング');
+  });
 });
 
 describe('getStyleConflicts', () => {
