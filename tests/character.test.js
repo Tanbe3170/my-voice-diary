@@ -896,4 +896,19 @@ describe('composeImagePrompt - 非文字列入力の正規化', () => {
     expect(result.prompt).toBeDefined();
     expect(result.prompt).toContain('Flat illustration style');
   });
+
+  it('diaryImagePrompt=0（数値） + character有: "0"として正規化されること', () => {
+    const character = createValidCharacter();
+    const result = composeImagePrompt(0, character, 'oilpainting');
+    expect(result.prompt).toBeDefined();
+    expect(result.prompt).toContain('Scene: 0');
+    expect(result.prompt).toContain('Art style:');
+  });
+
+  it('diaryImagePrompt=12345（数値） + character=null: 文字列化されプロンプト生成できること', () => {
+    const result = composeImagePrompt(12345, null, 'oilpainting');
+    expect(result.prompt).toBeDefined();
+    expect(result.prompt).toContain('12345');
+    expect(result.prompt).toContain('Acrylic paleoart');
+  });
 });

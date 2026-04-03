@@ -2,7 +2,7 @@
 
 > **作成日:** 2026-03-30
 > **更新日:** 2026-04-03
-> **状態:** Phase 2 実装完了（テスト468件パス） → Phase 2 codex-review待ち（セッションD）
+> **状態:** Phase 2 codex-review完了（arch ok:true, diff ok:true） → advisory対応済み → コミット＆プッシュ（セッションD）
 
 ---
 
@@ -53,16 +53,19 @@
   - `lib/character.js` composed配列を Scene→Art style→basePrompt→eyeDescriptor 順に変更
   - `tests/character.test.js` テスト14件追加（順序3+DALL-E境界6+worst-case1+非文字列正規化4）
   - 全468テストパス確認
+- [x] **Phase 2 codex-review完了**（セッションD: 2026-04-03）
+  - arch: ok: true（blocking 0, advisory 1）
+  - diff: ok: true（blocking 0, advisory 2）
+  - advisory対応:
+    - `IMAGE_PROMPT_HARD_LIMIT=500` を `lib/prompt-policy.js` に集約（定数分散解消）
+    - `tests/character.test.js` に数値入力テスト2件追加（0, 12345）
+  - 全470テストパス確認
 
 ## 次セッションのアクション
 
-### 1. Phase 2 codex-review
+### 1. Phase 3 実装
 
-Phase 2実装済み・テストパス済み。codex-reviewを実施する。
-
-1. `codex-review` で diff レビュー（lib/character.js + tests/character.test.js）
-2. ok: true まで反復修正
-3. コミット＆プッシュ
+ExecPlan `plans/story-driven-paleoart-exec.md` のPhase 3を実施する。
 
 ## 必読ファイル
 
@@ -81,8 +84,9 @@ Phase 2実装済み・テストパス済み。codex-reviewを実施する。
 | `api/create-diary.js` | JSON_OUTPUT_SCHEMA分岐 + build関数シグネチャ + export化 | ✅ Phase 1完了 |
 | `tests/image-styles.test.js` | claudeInstruction検証テスト1件追加 | ✅ Phase 1完了 |
 | `tests/create-diary-schema.test.js` | スキーマ・buildPrompt・handler統合テスト13件 | ✅ Phase 1完了 |
-| `lib/character.js` | composeImagePrompt冒頭クランプ + 配列順序変更 | ✅ Phase 2実装完了（codex-review待ち） |
-| `tests/character.test.js` | 順序検証・DALL-E境界・非文字列テスト14件 | ✅ Phase 2実装完了（codex-review待ち） |
+| `lib/character.js` | composeImagePrompt冒頭クランプ + 配列順序変更 | ✅ Phase 2 codex-review完了 |
+| `lib/prompt-policy.js` | IMAGE_PROMPT_HARD_LIMIT=500 集約 | ✅ Phase 2 advisory対応 |
+| `tests/character.test.js` | 順序検証・DALL-E境界・非文字列テスト16件 | ✅ Phase 2 codex-review完了 |
 
 ## Codexレビュー修正履歴
 
