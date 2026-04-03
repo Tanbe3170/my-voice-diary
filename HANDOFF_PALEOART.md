@@ -2,7 +2,7 @@
 
 > **作成日:** 2026-03-30
 > **更新日:** 2026-04-03
-> **状態:** Phase 2 codex-review完了（arch ok:true, diff ok:true） → advisory対応済み → コミット＆プッシュ（セッションD）
+> **状態:** 全Phase完了（Phase 1/2/3実装＋codex-review済み） — 手動テスト未実施
 
 ---
 
@@ -61,11 +61,24 @@
     - `tests/character.test.js` に数値入力テスト2件追加（0, 12345）
   - 全470テストパス確認
 
-## 次セッションのアクション
+## 完了済み（Phase 3 — テスト）
 
-### 1. Phase 3 実装
+- [x] **Phase 3 テスト追加**: Phase 1/2実装時に全テストステップ（Step 3-1, 3-2a/b/c, 3-3a/b）を同時実装済み
+  - Step 3-1: image-styles.test.js claudeInstruction検証1件（Phase 1で実装）
+  - Step 3-2a/b/c: create-diary-schema.test.js スキーマ・buildPrompt・handler統合テスト13件（Phase 1で実装）
+  - Step 3-3a: character.test.js 順序検証3件（Phase 2で実装）
+  - Step 3-3b: character.test.js DALL-E境界・クランプ防御・非文字列正規化テスト11件（Phase 2で実装）
+  - 全470テストパス確認
 
-ExecPlan `plans/story-driven-paleoart-exec.md` のPhase 3を実施する。
+## 残作業
+
+### 手動テスト（任意・後日実施可）
+
+ExecPlan成功基準の手動テスト2項目が未実施:
+- [ ] oilpaintingで生成したimage_promptにストーリー要素が明確に含まれる
+- [ ] illustration/popillustの画像品質に退行がない
+
+詳細手順: `plans/paleoart-manual-test-plan.md` 参照
 
 ## 必読ファイル
 
@@ -116,4 +129,4 @@ ExecPlan `plans/story-driven-paleoart-exec.md` のPhase 3を実施する。
 
 ---
 
-*次セッションはPhase 2実装から開始*
+*全Phase実装完了 — 手動テストは任意・後日実施可*
