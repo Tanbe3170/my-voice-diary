@@ -742,3 +742,158 @@ describe('composeImagePrompt - styleOverrides不正データ防御', () => {
     expect(result).toBeNull();
   });
 });
+
+// ===================================================================
+// composeImagePrompt - Phase 2: プロンプト順序検証
+// ===================================================================
+
+describe('composeImagePrompt - プロンプト順序検証', () => {
+  it('Sceneがプロンプトの先頭付近に配置されること（ストーリー優先）', () => {
+    const character = createValidCharacter();
+    const result = composeImagePrompt('A dramatic survival scene', character, 'oilpainting');
+    const sceneIndex = result.prompt.indexOf('Scene:');
+    const basePromptIndex = result.prompt.indexOf(character.imageGeneration.basePrompt.substring(0, 20));
+    expect(sceneIndex).toBeLessThan(basePromptIndex);
+  });
+
+  it('Art style要素がbasePromptより前に配置されること（DALL-E先頭1000文字内保証）', () => {
+    const character = createValidCharacter();
+    const result = composeImagePrompt('A tense hunting scene', character, 'oilpainting');
+    const artStyleIndex = result.prompt.indexOf('Art style:');
+    const basePromptIndex = result.prompt.indexOf(character.imageGeneration.basePrompt.substring(0, 20));
+    expect(artStyleIndex).toBeLessThan(basePromptIndex);
+  });
+
+  it('Scene要素がArt style要素より前に来ること', () => {
+    const character = createValidCharacter();
+    const result = composeImagePrompt('A tense hunting scene', character, 'oilpainting');
+    const sceneIndex = result.prompt.indexOf('Scene:');
+    const artStyleIndex = result.prompt.indexOf('Art style:');
+    expect(sceneIndex).toBeLessThan(artStyleIndex);
+  });
+});
+
+// ===================================================================
+// composeImagePrompt - Phase 2: DALL-E境界・クランプ防御テスト
+// ===================================================================
+
+describe('composeImagePrompt - DALL-E境界・クランプ防御', () => {
+  // ヘルパー: 指定長のSceneテキスト生成
+  function createLongScene(targetLength) {
+    const base = 'A dramatic survival scene in the ancient Cretaceous forest ';
+    const filler = 'with dense ferns and towering conifers and flowing rivers through volcanic highlands ';
+    let scene = base;
+    while (scene.length < targetLength) { scene += filler; }
+    return scene.slice(0, targetLength);
+  }
+
+  // --- グループ1: 実運用境界（image_prompt上限500文字） ---
+
+  it('illustration: 500文字Sceneで先頭1000文字内にArt styleが残ること', () => {
+    const character = createValidCharacter();
+    const scene = 'A dramatic survival scene in the ancient Cretaceous forest '.padEnd(500, 'x');
+    const result = composeImagePrompt(scene, character, 'illustration');
+    const first1000 = result.prompt.slice(0, 1000);
+    expect(first1000).toContain('Art style:');
+    expect(first1000).toContain('Flat illustration style');
+  });
+
+  it('popillust: 500文字Sceneで先頭1000文字内にArt styleが残ること', () => {
+    const character = createValidCharacter();
+    const scene = 'A dramatic survival scene in the ancient Cretaceous forest '.padEnd(500, 'x');
+    const result = composeImagePrompt(scene, character, 'popillust');
+    const first1000 = result.prompt.slice(0, 1000);
+    expect(first1000).toContain('Art style:');
+    expect(first1000).toContain('Dynamic pop-art');
+  });
+
+  // --- グループ2: 500文字クランプ防御の検証（経路非依存のDALL-E安全性保証） ---
+
+  it('800文字超過Scene: composeImagePromptが500文字にクランプし、DALL-E先頭1000文字にArt styleが残ること', () => {
+    const character = createValidCharacter();
+    const longScene = createLongScene(800);
+    const result = composeImagePrompt(longScene, character, 'oilpainting');
+    const first1000 = result.prompt.slice(0, 1000);
+    expect(first1000).toContain('Scene:');
+    expect(first1000).toContain('Art style:');
+    expect(first1000).toContain('Acrylic paleoart');
+    // クランプされたSceneは500文字以内
+    const sceneStart = result.prompt.indexOf('Scene: ') + 'Scene: '.length;
+    const artStyleStart = result.prompt.indexOf('. Art style:');
+    const sceneContent = result.prompt.substring(sceneStart, artStyleStart > sceneStart ? artStyleStart : undefined);
+    expect(sceneContent.length).toBeLessThanOrEqual(500);
+  });
+
+  it('3200文字超過Scene: クランプ後も合成プロンプト全体にArt styleが含まれること', () => {
+    const character = createValidCharacter();
+    const longScene = createLongScene(3200);
+    const result = composeImagePrompt(longScene, character, 'oilpainting');
+    expect(result.prompt.length).toBeLessThanOrEqual(3800);
+    expect(result.prompt).toContain('Art style:');
+    expect(result.prompt).toContain('Acrylic paleoart');
+    const first1000 = result.prompt.slice(0, 1000);
+    expect(first1000).toContain('Art style:');
+  });
+
+  // --- グループ3: character=null経路のクランプ防御検証 ---
+
+  it('character=null + 800文字超過Scene: クランプされ先頭1000文字にスタイル識別語が残ること', () => {
+    const longScene = createLongScene(800);
+    const result = composeImagePrompt(longScene, null, 'oilpainting');
+    const first1000 = result.prompt.slice(0, 1000);
+    expect(first1000).toContain('Acrylic paleoart');
+    expect(result.prompt.length).toBeLessThan(800 + 500);
+  });
+
+  it('character=null + 3200文字超過Scene: クランプされプロンプト全体にスタイル識別語が残ること', () => {
+    const longScene = createLongScene(3200);
+    const result = composeImagePrompt(longScene, null, 'illustration');
+    expect(result.prompt).toContain('Flat illustration style');
+    const first1000 = result.prompt.slice(0, 1000);
+    expect(first1000).toContain('Flat illustration style');
+  });
+
+  // --- グループ4: 長大basePrompt worst-case検証 ---
+
+  it('長大basePrompt(900文字) + 500文字Scene: Art style:が先頭1000文字内に残ること', () => {
+    const character = createValidCharacter();
+    character.imageGeneration.basePrompt = 'A massive ancient creature '.padEnd(900, 'with detailed features ');
+    const scene = 'A dramatic survival scene in the ancient Cretaceous forest '.padEnd(500, 'x');
+    const result = composeImagePrompt(scene, character, 'oilpainting');
+    const first1000 = result.prompt.slice(0, 1000);
+    expect(first1000).toContain('Art style:');
+    expect(first1000).toContain('Acrylic paleoart');
+  });
+});
+
+// ===================================================================
+// composeImagePrompt - Phase 2: 非文字列入力の正規化検証
+// ===================================================================
+
+describe('composeImagePrompt - 非文字列入力の正規化', () => {
+  it('diaryImagePrompt=null + character有: TypeErrorなくプロンプト生成できること', () => {
+    const character = createValidCharacter();
+    const result = composeImagePrompt(null, character, 'oilpainting');
+    expect(result.prompt).toBeDefined();
+    expect(result.prompt).toContain('Art style:');
+  });
+
+  it('diaryImagePrompt=undefined + character有: TypeErrorなくプロンプト生成できること', () => {
+    const character = createValidCharacter();
+    const result = composeImagePrompt(undefined, character, 'oilpainting');
+    expect(result.prompt).toBeDefined();
+    expect(result.prompt).toContain('Art style:');
+  });
+
+  it('diaryImagePrompt=null + character=null: TypeErrorなくプロンプト生成できること', () => {
+    const result = composeImagePrompt(null, null, 'oilpainting');
+    expect(result.prompt).toBeDefined();
+    expect(result.prompt).toContain('Acrylic paleoart');
+  });
+
+  it('diaryImagePrompt=undefined + character=null: TypeErrorなくプロンプト生成できること', () => {
+    const result = composeImagePrompt(undefined, null, 'illustration');
+    expect(result.prompt).toBeDefined();
+    expect(result.prompt).toContain('Flat illustration style');
+  });
+});

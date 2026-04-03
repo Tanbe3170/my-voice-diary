@@ -1,8 +1,8 @@
 # Handoff: パレオアートモード ストーリー反映改善
 
 > **作成日:** 2026-03-30
-> **更新日:** 2026-03-31
-> **状態:** Phase 1 codex-review完了（arch ok:true, diff ok:true 反復3） → Phase 2実装（セッションC）
+> **更新日:** 2026-04-03
+> **状態:** Phase 2 実装完了（テスト468件パス） → Phase 2 codex-review待ち（セッションD）
 
 ---
 
@@ -46,19 +46,23 @@
   - advisory対応: tests/image-styles.test.jsにgetStyleImagePromptRequirementテスト5件追加
   - 全454テストパス確認
 
+## 完了済み（Phase 2）
+
+- [x] **Phase 2 実装完了**（セッションC: 2026-04-03）
+  - `lib/character.js` composeImagePrompt冒頭に非文字列正規化 + `IMAGE_PROMPT_HARD_LIMIT=500`クランプ追加
+  - `lib/character.js` composed配列を Scene→Art style→basePrompt→eyeDescriptor 順に変更
+  - `tests/character.test.js` テスト14件追加（順序3+DALL-E境界6+worst-case1+非文字列正規化4）
+  - 全468テストパス確認
+
 ## 次セッションのアクション
 
-### 1. Phase 2 実装
+### 1. Phase 2 codex-review
 
-Phase 1のcodex-review完了済み。Phase 2を実施。
+Phase 2実装済み・テストパス済み。codex-reviewを実施する。
 
-**Phase 2: プロンプト合成の優先順位変更（リスク: 中）**
-0. `lib/character.js:244` — composeImagePrompt冒頭に非文字列正規化 + `IMAGE_PROMPT_HARD_LIMIT=500`クランプ追加（character有無に関わらず適用）
-1. `lib/character.js:265-276` — composed配列を Scene→Art style→basePrompt→eyeDescriptor 順に変更（clampedScene使用）
-2. `tests/character.test.js` — 順序検証3件 + DALL-E境界6件 + worst-case1件 + 非文字列正規化4件 追加
-3. `npm test` で全テスト通過確認
-4. `codex-review` で ok: true まで反復
-5. コミット＆プッシュ
+1. `codex-review` で diff レビュー（lib/character.js + tests/character.test.js）
+2. ok: true まで反復修正
+3. コミット＆プッシュ
 
 ## 必読ファイル
 
@@ -77,8 +81,8 @@ Phase 1のcodex-review完了済み。Phase 2を実施。
 | `api/create-diary.js` | JSON_OUTPUT_SCHEMA分岐 + build関数シグネチャ + export化 | ✅ Phase 1完了 |
 | `tests/image-styles.test.js` | claudeInstruction検証テスト1件追加 | ✅ Phase 1完了 |
 | `tests/create-diary-schema.test.js` | スキーマ・buildPrompt・handler統合テスト13件 | ✅ Phase 1完了 |
-| `lib/character.js` | composeImagePrompt冒頭クランプ + 配列順序変更 | 📋 Phase 2 |
-| `tests/character.test.js` | 順序検証・DALL-E境界・非文字列テスト14件 | 📋 Phase 2 |
+| `lib/character.js` | composeImagePrompt冒頭クランプ + 配列順序変更 | ✅ Phase 2実装完了（codex-review待ち） |
+| `tests/character.test.js` | 順序検証・DALL-E境界・非文字列テスト14件 | ✅ Phase 2実装完了（codex-review待ち） |
 
 ## Codexレビュー修正履歴
 
