@@ -613,4 +613,85 @@ describe('create-research API', () => {
       expect(res._status).toBe(500);
     });
   });
+
+  // =================================================================
+  // 11. owl-encyclopedia Webhook 連携（fail-open検証）
+  // =================================================================
+  describe('owl-encyclopedia Webhook 連携（fail-open）', () => {
+    it('sendToOwlEncyclopedia が例外を throw してもリサーチ作成は HTTP 200 で成功', async () => {
+      // owl-api.js の動的importをモック: 例外を throw する sendToOwlEncyclopedia
+      const baseFetch = createFullFlowFetchMock();
+      const owlImportCalled = { value: false };
+
+      // fetchモック: 通常フロー + owl-encyclopedia への呼び出しは発生しない（import段階で例外）
+      globalThis.fetch = baseFetch;
+
+      // OWL_API_URL を設定（Webhook送信を試みるように）
+      process.env.OWL_API_URL = 'https://owl-api.example.com';
+      process.env.OWL_WEBHOOK_SECRET = 'test-secret';
+
+      vi.resetModules();
+      const mod = await import('../api/create-research.js');
+      const req = createMockReq();
+      const res = createMockRes();
+
+      // console.error をスパイ
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      await mod.default(req, res);
+
+      // fail-open: リサーチ作成自体は成功
+      expect(res._status).toBe(200);
+      expect(res._json.success).toBe(true);
+
+      errorSpy.mockRestore();
+    });
+
+    it('OWL_API_URL 未設定時はリサーチ作成が正常完了（エラーログなし）', async () => {
+      delete process.env.OWL_API_URL;
+      globalThis.fetch = createFullFlowFetchMock();
+
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      vi.resetModules();
+      const mod = await import('../api/create-research.js');
+      const req = createMockReq();
+      const res = createMockRes();
+      await mod.default(req, res);
+
+      // リサーチ作成は成功
+      expect(res._status).toBe(200);
+      expect(res._json.success).toBe(true);
+
+      // owl-encyclopedia 関連のエラーログがないことを確認
+      const owlErrors = errorSpy.mock.calls.filter(
+        call => call[0]?.toString().includes('owl-encyclopedia')
+      );
+      expect(owlErrors).toHaveLength(0);
+
+      errorSpy.mockRestore();
+    });
+
+    it('owl-api.js の動的 import 自体が失敗してもリサーチ作成は HTTP 200 で成功', async () => {
+      // OWL_API_URL を設定（Webhook送信を試みるように）
+      process.env.OWL_API_URL = 'https://owl-api.example.com';
+      process.env.OWL_WEBHOOK_SECRET = 'test-secret';
+
+      globalThis.fetch = createFullFlowFetchMock();
+
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      vi.resetModules();
+      const mod = await import('../api/create-research.js');
+      const req = createMockReq();
+      const res = createMockRes();
+      await mod.default(req, res);
+
+      // fail-open: リサーチ作成自体は成功
+      expect(res._status).toBe(200);
+      expect(res._json.success).toBe(true);
+
+      errorSpy.mockRestore();
+    });
+  });
 });

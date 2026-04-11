@@ -186,7 +186,7 @@ diary-input.html                           owl-encyclopedia
 
 ## 成功基準
 
-- [ ] 既存168テスト + 新規テスト全通過
+- [x] 既存168テスト + 新規テスト全通過（479テスト全通過: 2026-04-11）
 - [ ] OWL_API_URL 未設定時にリサーチ作成が正常完了する
 - [ ] OWL_API_URL 設定時にリサーチデータが owl-encyclopedia DB に保存される
 - [ ] owl-encyclopedia API がダウン時にリサーチ作成が正常完了する
@@ -211,10 +211,10 @@ diary-input.html                           owl-encyclopedia
 
 | # | タスク | ファイル数 | セッション | 状態 | 完了日 |
 |---|--------|----------|-----------|------|-------|
-| 2-1 | lib/owl-api.js + HMAC署名生成 | 1 | 0.5 | ⬜ | |
-| 2-2 | create-research.jsにWebhookフック追加 | 1 | 0.5 | ⬜ | |
-| 2-3 | diary-input.html URLパラメータ対応 | 1 | 0.5 | ⬜ | |
-| 2-4 | テスト（owl-api.test.js） | 1 | 0.5 | ⬜ | |
+| 2-1 | lib/owl-api.js + HMAC署名生成 | 1 | 0.5 | ✅ | 2026-04-11 |
+| 2-2 | create-research.jsにWebhookフック追加 + vercel.json更新 | 2 | 0.5 | ✅ | 2026-04-11 |
+| 2-3 | diary-input.html URLパラメータ対応 | 1 | 0.5 | ✅ | 2026-04-11 |
+| 2-4 | テスト（owl-api.test.js + 統合テスト3件） | 2 | 0.5 | ✅ | 2026-04-11 |
 | 2-R | codex-review + 修正 | - | 0.5 | ⬜ | |
 
 ### 状態の凡例

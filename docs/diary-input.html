@@ -223,6 +223,25 @@
     tabDiary.onclick = () => switchContentType('diary');
     tabResearch.onclick = () => switchContentType('research');
 
+    // === URL パラメータによるプリフィル ===
+    // owl-encyclopedia FE からの遷移: ?type=research&category=dinosaur&topic=Velociraptor
+    const urlParams = new URLSearchParams(window.location.search);
+    const typeParam = urlParams.get('type');
+    const categoryParam = urlParams.get('category');
+    const topicParam = urlParams.get('topic');
+
+    if (typeParam === 'research') {
+      switchContentType('research');
+      if (categoryParam) {
+        const categorySelect = document.getElementById('research-category');
+        if (categorySelect) categorySelect.value = categoryParam;
+      }
+      if (topicParam) {
+        const topicInput = document.getElementById('research-topic');
+        if (topicInput) topicInput.value = topicParam;  // URLSearchParams.get() が自動デコード済み
+      }
+    }
+
     // === Phase 2.5: Vercel Function連携処理 ===
     const processBtn = document.getElementById('process-btn');
     const progressDiv = document.getElementById('progress');

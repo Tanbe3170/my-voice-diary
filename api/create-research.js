@@ -530,6 +530,22 @@ ${researchData.body}
     }
 
     // ===================================================================
+    // 11.5. owl-encyclopedia Webhook 送信（fail-open）
+    // ===================================================================
+
+    try {
+      const { sendToOwlEncyclopedia } = await import('../lib/owl-api.js');
+      const githubFileUrl = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/blob/main/${filePath}`;
+      const owlResult = await sendToOwlEncyclopedia(researchData, githubFileUrl);
+      if (owlResult) {
+        console.warn('owl-encyclopedia 連携成功:', owlResult.id || owlResult.slug);
+      }
+    } catch (owlError) {
+      // fail-open: import失敗・Webhook エラーすべてをここで吸収
+      console.error('owl-encyclopedia 連携エラー（無視）:', owlError.message);
+    }
+
+    // ===================================================================
     // 12. 成功レスポンスを返す
     // ===================================================================
 

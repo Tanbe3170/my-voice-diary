@@ -10,6 +10,9 @@
     "api/create-diary.js": {
       "maxDuration": 30
     },
+    "api/create-research.js": {
+      "maxDuration": 30
+    },
     "api/generate-image.js": {
       "maxDuration": 60
     },
