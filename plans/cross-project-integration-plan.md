@@ -215,7 +215,7 @@ diary-input.html                           owl-encyclopedia
 | 2-2 | create-research.jsにWebhookフック追加 + vercel.json更新 | 2 | 0.5 | ✅ | 2026-04-11 |
 | 2-3 | diary-input.html URLパラメータ対応 | 1 | 0.5 | ✅ | 2026-04-11 |
 | 2-4 | テスト（owl-api.test.js + 統合テスト3件） | 2 | 0.5 | ✅ | 2026-04-11 |
-| 2-R | codex-review + 修正 | - | 0.5 | ⬜ | |
+| 2-R | codex-review + 修正 | 1 | 0.5 | ✅ | 2026-04-11 |
 
 ### 状態の凡例
 
