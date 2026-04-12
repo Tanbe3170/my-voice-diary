@@ -2,7 +2,7 @@
 ## diary 視点
 
 > 作成日: 2026-03-27
-> 最終更新: 2026-03-29（画像スタイル選択追加の影響反映）
+> 最終更新: 2026-04-12（Phase 4 what-if統合 Step 4-1〜4-4 実装完了）
 > 対象: diary (Vercel Serverless + GitHub Pages)
 > 関連: owl-encyclopedia, what-if
 
